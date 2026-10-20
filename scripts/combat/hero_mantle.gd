@@ -25,29 +25,3 @@ func _draw() -> void:
 	draw_colored_polygon(edge, col)
 	draw_line(top+Vector2(-4,1)*sc,tail+Vector2(-5,0)*sc,Color("#f1c574"),0.8,true)
 	draw_line(top+Vector2(1,1)*sc,tail+Vector2(2,1)*sc,Color(col.lightened(0.15),0.8),1.2,true)
-
-
-class Crest extends Node2D:
-	var unit: Unit
-	var clock := 0.0
-	func _process(delta: float) -> void:
-		if not is_instance_valid(unit):
-			return
-		visible = unit.is_player and not unit.dead and unit.rig.visible
-		if visible:
-			clock += delta
-			queue_redraw()
-	func _draw() -> void:
-		if not is_instance_valid(unit):
-			return
-		# A short cloth horsehair crest and gilded brow distinguish the controlled
-		# soldier without replacing the original animated head or its silhouette.
-		var sc := unit.base_scale.x
-		var at := unit.rig.transform * (unit.body.position + Vector2(unit.body.offset.x+unit.body.region_rect.size.x*0.5,unit.body.offset.y+5.0))
-		var flow := sin(clock*6)*0.9
-		var face := float(unit.face)
-		var plume := PackedVector2Array([at+Vector2(-2,1)*sc,at+Vector2(0,-6)*sc,
-			at+Vector2(-face*5,-7+flow)*sc,at+Vector2(-face*9,-1+flow)*sc,
-			at+Vector2(-face*7,4)*sc,at+Vector2(-face*4,-1)*sc])
-		draw_colored_polygon(plume,Color("#b43f32"))
-		draw_line(at+Vector2(0,-5)*sc,at+Vector2(-face*5,-6+flow)*sc,Color("#f4bd77"),0.9,true)

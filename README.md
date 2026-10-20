@@ -6,7 +6,7 @@
 
 This pass improves the live combat loop as well as presentation: two recharging dodge charges, instant parry timing, a stronger counter after a parry or close dodge, faster linked attacks, movement during attacks, narrower aim assist, and melee occlusion against solid scenery. Holding left mouse chains attacks; two lights into right mouse triggers the existing weapon finisher.
 
-The controlled soldier now has live cloth, a crest, warm rim lighting and a foot marker. Ground attack cues distinguish sweeps, thrusts and unblockables. New supply caches restore stamina/spirit and marked oil barrels knock enemies down. Terrain is quieter, Bellacourt has more street props, and command routes follow the actual navigation path. The HUD shows health, stamina, dodge charges and ability readiness; **F7** reduces camera motion.
+The controlled soldier now has live cloth, warm rim lighting and a foot marker. Ground attack cues distinguish sweeps, thrusts and unblockables. New supply caches restore stamina/spirit and marked oil barrels knock enemies down. Terrain is quieter, Bellacourt has more street props, and command routes follow the actual navigation path. The HUD shows health, stamina, dodge charges and ability readiness; **F7** reduces camera motion.
 
 [Design references, exact changes and validation](docs/POLISH_NOTES.md). The existing chapters and documentation below remain available.
 
