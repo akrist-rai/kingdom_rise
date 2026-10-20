@@ -770,9 +770,9 @@ func _dress_field(rng: RandomNumberGenerator) -> void:
 	var field := Rect2(-260, y0 - 20.0, Battle.W + 520, y1 - y0 + 20.0)
 	var avoid_road := func(p: Vector2) -> bool: return _road_dist(p) < 50.0 + randf() * 20.0
 	var tint := Color(0.86, 0.9, 0.8)
-	S.scatter_clumps(field, 900, Vector2i(3, 9), 22.0, ["grass_1", "grass_1", "grass_2", "clover_1", "clover_2", "grass_3"], rng, avoid_road, Vector2(0.7, 1.2), tint)
-	S.scatter(field, 1200, ["grass_1", "grass_2", "clover_1"], rng, avoid_road, Vector2(0.6, 1.0), tint)
-	S.scatter_clumps(field, 150, Vector2i(3, 7), 18.0, ["flowers_1", "flowers_2", "flower_1", "flower_2"], rng, avoid_road, Vector2(0.6, 1.0))
+	S.scatter_clumps(field, 370, Vector2i(4, 9), 30.0, ["grass_1", "grass_1", "grass_2", "clover_1", "clover_2", "grass_3"], rng, avoid_road, Vector2(0.85, 1.4), tint)
+	S.scatter(field, 260, ["grass_1", "grass_2", "clover_1"], rng, avoid_road, Vector2(0.6, 1.0), tint)
+	S.scatter_clumps(field, 90, Vector2i(3, 6), 24.0, ["flowers_1", "flowers_2", "flower_1", "flower_2"], rng, avoid_road, Vector2(0.6, 1.0))
 	S.scatter_clumps(field, 70, Vector2i(2, 5), 14.0, ["pebble_1", "pebble_2", "pebble_3", "pebble_4"], rng, Callable(), Vector2(0.6, 1.0), Color(0.9, 0.88, 0.84))
 	var road_only := func(p: Vector2) -> bool: return _road_dist(p) > 52.0
 	S.scatter_clumps(field, 260, Vector2i(2, 5), 16.0, ["pebble_1", "pebble_2", "pebble_3", "pebble_4", "path_2", "path_4"], rng, road_only, Vector2(0.5, 0.9), Color(0.9, 0.86, 0.8))

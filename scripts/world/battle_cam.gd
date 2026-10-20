@@ -121,7 +121,7 @@ func _process(delta: float) -> void:
 	base_cur = lerpf(base_cur, base_zoom, 1.0 - exp(-rdt * 1.6))
 	var goal_z := base_cur + (0.0 if Game.command_view else manual_zoom + pk + cinematic * 0.08)
 	cur_zoom = lerpf(cur_zoom, goal_z, 1.0 - exp(-rdt * (7.0 if goal_z > cur_zoom else 2.4)))
-	var z := maxf(0.2, cur_zoom * (1.0 + zp))
+	var z := maxf(0.2, cur_zoom * (1.0 + (0.0 if Game.reduced_motion else zp * 0.5)))
 	zoom = Vector2(z, z)
 	# ---- kicks and roll
 	kick_v += (-kick_p * 260.0 - kick_v * 22.0) * rdt
@@ -136,9 +136,9 @@ func _process(delta: float) -> void:
 	var sr := noise.get_noise_2d(t * 18.0 + 100.0, 7.0) * 0.045 * tr2
 	if Game.low_gfx:
 		sr = 0.0
-	offset = sh + kick_p
+	offset = (sh + kick_p) * (0.15 if Game.reduced_motion else 0.6)
 	# a breath of drift when nothing happens, so the frame never feels frozen
 	var drift := Vector2(sin(t * 0.37), cos(t * 0.29)) * 1.2
 	offset += drift
-	rotation = sr + roll
+	rotation = 0.0 if Game.reduced_motion else (sr + roll) * 0.35
 	Sfx.listener = global_position

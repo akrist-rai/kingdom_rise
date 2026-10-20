@@ -37,7 +37,7 @@ const PERKS := {
 	"second_wind": {"name": "SECOND WIND", "desc": "NEW BODIES START AT\nFULL HP, 3S INVINCIBLE"},
 	"war_drums": {"name": "WAR DRUMS", "desc": "YOUR SQUAD DEALS\n+35% DAMAGE"},
 	"executioner": {"name": "EXECUTIONER", "desc": "CRITICALS +40% DMG\nAND HEAL 15% HP"},
-	"ghost_step": {"name": "GHOST STEP", "desc": "LONGER DASH I-FRAMES\nDASH COSTS 30% LESS"},
+	"ghost_step": {"name": "GHOST STEP", "desc": "LONGER DASH I-FRAMES\nDODGE RECHARGES 30% FASTER"},
 	"hemorrhage": {"name": "HEMORRHAGE", "desc": "EVERY WEAPON CAUSES\nBLEED BUILDUP"},
 	"unbroken": {"name": "UNBROKEN", "desc": "+50% POISE\nGUARD COSTS 30% LESS"},
 	"spirit_well": {"name": "SPIRIT WELL", "desc": "+50% SPIRIT GAIN\nFOR WEAPON SKILLS"},
@@ -77,6 +77,8 @@ var chain_t := 0.0
 
 # Time effects (real-time based)
 var _hitstop_until := 0.0
+var _hitstop_ready := 0.0
+var reduced_motion := false
 var _slow_until := 0.0
 var _slow_scale := 1.0
 var possess_slow := false
@@ -168,6 +170,9 @@ func text(ci: CanvasItem, pos: Vector2, s: String, sz: int = 8, col: Color = Col
 	ci.draw_string(f, p, t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
 
 func reset_legacy() -> void:
+	_hitstop_until = 0.0
+	_hitstop_ready = 0.0
+	_slow_until = 0.0
 	xp = 0.0
 	rank = 0
 	perks = {}
@@ -202,7 +207,7 @@ func _process(delta: float) -> void:
 	if get_tree().paused:
 		return
 	# Style decay and freshness recovery (in game time).
-	var gd := delta * Engine.time_scale
+	var gd := delta
 	style_hold -= gd
 	if style_hold <= 0.0 and style > 0.0:
 		var tier := style_tier()
@@ -217,7 +222,14 @@ func _process(delta: float) -> void:
 
 # ---------------------------------------------------------------- time effects
 func hitstop(dur: float) -> void:
-	_hitstop_until = max(_hitstop_until, now() + dur)
+	# One impact beat for an entire cleave. Simultaneous victims must never extend
+	# the pause into a slideshow; parries/executions can still request a larger beat.
+	var t := now()
+	if t < _hitstop_ready:
+		return
+	var beat := clampf(dur, 0.018, 0.085)
+	_hitstop_until = t + beat
+	_hitstop_ready = t + beat + 0.08
 
 func slowmo(scale: float, dur: float) -> void:
 	_slow_scale = scale

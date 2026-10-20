@@ -201,6 +201,8 @@ static func update(u: Unit, delta: float) -> void:
 		u.sk.erase("armored")
 
 static func _hit(u: Unit, e, mult: float, extra: Dictionary) -> void:
+	if u.battle.terrain != null and u.battle.terrain.blocked(u.global_position, e.global_position):
+		return
 	var h := u.make_hit({"dmg": mult, "pz": extra.get("pz", 20.0), "st": extra.get("st", 15.0), "kb": extra.get("kb", 60.0)})
 	h["skill"] = true
 	if extra.has("bleed"):

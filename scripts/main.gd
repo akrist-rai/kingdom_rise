@@ -36,6 +36,8 @@ func _ready() -> void:
 			out_dir = a.substr(6)
 		elif a == "--level=commander_city":
 			next_level = "commander_city"
+		elif a == "--level=combat_yard":
+			next_level = "combat_yard"
 		elif a == "--title":
 			title_only = true
 
@@ -106,6 +108,9 @@ func show_title() -> void:
 	t.start_commander.connect(func():
 		next_level = "commander_city"
 		transition(start_battle))
+	t.start_yard.connect(func():
+		next_level = "combat_yard"
+		transition(start_battle))
 	_swap(t)
 
 func show_map() -> void:
@@ -121,7 +126,7 @@ var next_level := "siege"
 
 func start_battle() -> void:
 	Game.reset_legacy()
-	var b: Battle = CommanderBattle.new() if next_level == "commander_city" else Battle.new()
+	var b: Battle = CommanderBattle.new() if next_level == "commander_city" else CombatYard.new() if next_level == "combat_yard" else Battle.new()
 	b.level = next_level
 	b.leave_battle.connect(_on_leave)
 	_swap(b)
@@ -132,6 +137,10 @@ func _on_leave(restart: bool) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F2:
 		Game.low_gfx = not Game.low_gfx
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F7:
+		Game.reduced_motion = not Game.reduced_motion
+		if current is Battle and current.hud != null:
+			current.hud.alert("CAMERA MOTION / " + ("REDUCED" if Game.reduced_motion else "FULL"))
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F11:
 		var mode := DisplayServer.window_get_mode()
 		if mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN:

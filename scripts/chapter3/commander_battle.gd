@@ -24,6 +24,9 @@ func _ready()->void:
 	add_child(tactics)
 	tactics.setup(self)
 	_deploy()
+	interactables=BattleInteractables.new()
+	add_child(interactables)
+	interactables.setup(self)
 	_rebuild_grid()
 	Sfx.boss_mode=false
 	Sfx.start_music()
@@ -91,6 +94,10 @@ func _build()->void:
 	hud.battle=self
 	layer.add_child(hud)
 	level_ctl.populate(self)
+	var details=CityDetails.new()
+	add_child(details)
+	move_child(details,world.get_index())
+	details.setup(self)
 	shadows.set_sun(Vector2(0.7,0.4),Color("#243d36"),0.18)
 func _deploy()->void:
 	var d=tactics as CommanderDirector

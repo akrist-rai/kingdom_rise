@@ -41,3 +41,8 @@ godot --path . -- --autotest --map --len=6
 ## Chapter III update
 
 The mounted commander chapter is now implemented. See `CHAPTER_III.md` for its separate controls, formation rules, art provenance, and completed integration checks. The earlier scope notes above describe the first polish pass.
+
+## Iron & Ember combat pass
+
+See [POLISH_NOTES.md](POLISH_NOTES.md) for the current 37-check combat regression,
+new Combat Yard, current input behaviour, source references and validation limits.

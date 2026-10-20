@@ -114,6 +114,8 @@ const MAX_CORPSES := 160
 var unit_shadows: UnitShadows
 var fire_emitters: Array = []   # smoke and spark emitters of the fires (paused while off screen)
 var emit_t := 0.0
+var combat_regression: CombatRegression
+var interactables: BattleInteractables
 var scenery: Scenery
 var soft_t := 0.0
 var debug_zoom := -1.0
@@ -158,11 +160,17 @@ func _ready() -> void:
 		BOT = bounds.end.y
 	_build()
 	_deploy()
+	interactables = BattleInteractables.new()
+	add_child(interactables)
+	interactables.setup(self)
 	_rebuild_grid()
 	_refresh_squad()
 	tactics = FormationDirector.new()
 	add_child(tactics)
 	tactics.setup(self)
+	if OS.get_cmdline_user_args().has("--combat-test"):
+		combat_regression = CombatRegression.new()
+		combat_regression.run.call_deferred(self)
 	Game.rank_changed.connect(_on_rank_changed)
 	Sfx.boss_mode = false
 	Sfx.intensity = 0.0
@@ -207,6 +215,9 @@ func _build() -> void:
 	unit_shadows = UnitShadows.new()
 	unit_shadows.battle = self
 	add_child(unit_shadows)
+	var signals := CombatSignals.new()
+	signals.battle = self
+	add_child(signals)
 	world = Node2D.new()
 	world.y_sort_enabled = true
 	add_child(world)
@@ -453,7 +464,7 @@ func request_token(u: Unit) -> bool:
 	if tokens.has(u):
 		tokens[u] = time + 3.0
 		return true
-	var max_t := 2 + (1 if Game.rank >= 2 else 0) + (1 if Game.rank >= 4 else 0)
+	var max_t := 2 + (1 if Game.rank >= 3 else 0)
 	if tokens.size() < max_t:
 		tokens[u] = time + 3.0
 		return true
@@ -1580,9 +1591,11 @@ func pick_target(u: Unit, dir: Vector2, rng: float) -> Unit:
 		if d > rng + e.radius:
 			continue
 		var ang := absf(angle_difference(d0.angle(), to.angle())) if d > 1.0 else 0.0
-		if ang > deg_to_rad(80.0) and d > 26.0:
+		if ang > deg_to_rad(44.0) and d > 18.0:
 			continue
-		var score := d * (1.0 + ang * 1.1)
+		if terrain != null and terrain.blocked(u.global_position, e.global_position):
+			continue
+		var score := d * (1.0 + ang * 1.8)
 		if e.state == Unit.St.BROKEN or e.state == Unit.St.KNOCKDOWN:
 			score *= 0.7
 		if e.is_officer or e.is_boss:

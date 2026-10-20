@@ -6,6 +6,7 @@ extends Node2D
 signal start_game
 signal open_map
 signal start_commander
+signal start_yard
 
 var t := 0.0
 var help := false
@@ -17,7 +18,7 @@ const S := 0.42                      # diorama scale: screen pixels per world un
 const ROAD_A := Vector2(470.0, 900.0)
 const ROAD_B := Vector2(900.0, 720.0)
 const ROAD_C := Vector2(1010.0, 556.0)
-const MENU := [["ENTER", "MARCH TO BATTLE"], ["3", "COMMAND BELLACOURT"], ["M", "CAMPAIGN ATLAS"]]
+const MENU := [["ENTER", "MARCH TO BATTLE"], ["3", "COMMAND BELLACOURT"], ["M", "CAMPAIGN ATLAS"], ["T", "ENTER COMBAT YARD"]]
 const MENU_Y := 262.0
 
 var dio: Node2D
@@ -70,6 +71,12 @@ func _process(delta: float) -> void:
 		key.physical_keycode = KEY_3
 		key.pressed = true
 		Input.parse_input_event(key)
+	if OS.get_cmdline_user_args().has("--test-yard-entry") and t > 0.8 and not has_meta("yard_entry_test"):
+		set_meta("yard_entry_test", true)
+		var key := InputEventKey.new()
+		key.physical_keycode = KEY_T
+		key.pressed = true
+		Input.parse_input_event(key)
 	var mp := get_viewport().get_mouse_position()
 	hover = -1
 	for i in MENU.size():
@@ -81,7 +88,9 @@ func _process(delta: float) -> void:
 				start_commander.emit()
 			elif Input.is_action_just_pressed("attack") and hover == 2:
 				open_map.emit()
-			else:
+			elif Input.is_action_just_pressed("attack") and hover == 3:
+				start_yard.emit()
+			elif Input.is_action_just_pressed("confirm") or hover == 0:
 				start_game.emit()
 	if Input.is_action_just_pressed("help"):
 		help = not help
@@ -91,7 +100,9 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_M:
+		if event.physical_keycode == KEY_T:
+			start_yard.emit()
+		elif event.physical_keycode == KEY_M:
 			open_map.emit()
 		elif event.physical_keycode == KEY_3:
 			start_commander.emit()

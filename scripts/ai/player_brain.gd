@@ -5,7 +5,7 @@ extends RefCounted
 
 var pad := false
 var last_mouse := Vector2.ZERO
-var mouse_ms := -100000      # when the mouse last moved: if it rests, you aim by moving
+var mouse_used := false     # once used, a resting cursor remains authoritative
 var bot_t := 0.0
 var bot_target: Unit = null
 
@@ -23,12 +23,11 @@ func think(u: Unit, delta: float) -> void:
 	u.i_move = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var stick := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
 	var vp_mouse := u.get_viewport().get_mouse_position()
-	var now := Time.get_ticks_msec()
 	if stick.length() > 0.35:
 		pad = true
 	elif vp_mouse.distance_to(last_mouse) > 0.5:
 		pad = false
-		mouse_ms = now
+		mouse_used = true
 	last_mouse = vp_mouse
 	if pad:
 		if stick.length() > 0.35:
@@ -36,8 +35,9 @@ func think(u: Unit, delta: float) -> void:
 		elif u.i_move.length() > 0.2:
 			u.i_aim = u.i_move.normalized()
 		u.i_aim_pt = u.global_position + u.i_aim * 150.0
-	elif now - mouse_ms > 1600 and u.i_move.length() > 0.2:
-		# keyboard only: you aim where you move, and attacks auto-target from there
+	elif not mouse_used and u.i_move.length() > 0.2:
+		# Until the mouse is first used, keyboard-only play aims with movement.
+		# Once used, the cursor remains authoritative even when it rests.
 		u.i_aim = u.i_move.normalized()
 		u.i_aim_pt = u.global_position + u.i_aim * 150.0
 	else:
