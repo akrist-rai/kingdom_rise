@@ -1,4 +1,15 @@
-# GOLDEN MARCH — Three Playable Chapters
+# GOLDEN MARCH — Iron & Ember combat polish
+
+**Start here:** import the root `project.godot`, press F5, then **T** on the title screen for the new **Combat Yard**. Keys **1–6** switch between sword, glaive, spear, hammer, daggers and bow. Enter still starts the siege; 3 starts Bellacourt.
+
+![Combat yard](screenshots/polish_combat_yard.png)
+
+This pass improves the live combat loop as well as presentation: two recharging dodge charges, instant parry timing, a stronger counter after a parry or close dodge, faster linked attacks, movement during attacks, narrower aim assist, and melee occlusion against solid scenery. Holding left mouse chains attacks; two lights into right mouse triggers the existing weapon finisher.
+
+The controlled soldier now has live cloth, a crest, warm rim lighting and a foot marker. Ground attack cues distinguish sweeps, thrusts and unblockables. New supply caches restore stamina/spirit and marked oil barrels knock enemies down. Terrain is quieter, Bellacourt has more street props, and command routes follow the actual navigation path. The HUD shows health, stamina, dodge charges and ability readiness; **F7** reduces camera motion.
+
+[Design references, exact changes and validation](docs/POLISH_NOTES.md). The existing chapters and documentation below remain available.
+
 
 **New: Chapter III, Bellacourt.** On the title screen, press **3** or click **COMMAND BELLACOURT**. You can also launch it from the third campaign-atlas entry. Chapters I and II remain available.
 
@@ -62,10 +73,10 @@ Bonuses depend on soldiers actually reaching their positions. Breaking cohesion 
 | --- | --- |
 | WASD / arrows | Move; pan in command view |
 | Mouse | Aim |
-| Left mouse | Light attack / combo |
+| Left mouse | Light attack / hold to chain |
 | Right mouse | Heavy attack; hold to charge |
 | Light, light, heavy | Weapon finisher |
-| Space | Dash |
+| Space | Two-charge dodge; perfect dodge primes a counter |
 | Shift | Guard; time the press for a parry |
 | E / R | Weapon skill / healing flask |
 | F | Interact, pick up weapon, mount, challenge an officer |
@@ -79,7 +90,7 @@ Bonuses depend on soldiers actually reaching their positions. Breaking cohesion 
 | G / V | War cry / arrow volley at the original rank unlock |
 | Backspace during possession | Cycle surviving allies; Enter chooses one |
 | H / Esc | Field manual / pause |
-| F2 / F6 / F11 | Low graphics / army density / fullscreen |
+| F2 / F6 / F7 / F11 | Low graphics / army density / reduced camera motion / fullscreen |
 
 Keyboard and mouse are recommended for formation command. The original gamepad combat bindings remain; the new command view and formation selectors use keyboard / mouse.
 

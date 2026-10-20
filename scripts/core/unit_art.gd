@@ -18,9 +18,9 @@ const LOADOUT := {
 
 ## faction palettes: [team_hi, team_mid, team_lo, steel tint]
 const PALETTES := {
-	"march": [Color("#e8664a"), Color("#c02c26"), Color("#3d0a12"), Vector3(1.12, 1.0, 0.84)],
-	"crown": [Color("#86c6e8"), Color("#2f6f9e"), Color("#0b1d33"), Vector3(0.8, 0.92, 1.14)],
-	"hero": [Color("#ffb070"), Color("#e0402c"), Color("#4a0c10"), Vector3(1.28, 1.06, 0.6)],
+	"march": [Color("#f1b475"), Color("#b34838"), Color("#382033"), Vector3(1.12, 1.0, 0.84)],
+	"crown": [Color("#b3e0d2"), Color("#347987"), Color("#142936"), Vector3(0.8, 0.92, 1.14)],
+	"hero": [Color("#ffe1a1"), Color("#dc6b3f"), Color("#632b32"), Vector3(1.28, 1.06, 0.6)],
 	"crown_elite": [Color("#7fa6ff"), Color("#24387a"), Color("#080c22"), Vector3(0.78, 0.82, 0.96)],
 	"general": [Color("#d6a8ff"), Color("#6b2fb0"), Color("#1a0830"), Vector3(0.62, 0.58, 0.74)],
 	"march_elite": [Color("#ffc46b"), Color("#b5532a"), Color("#3a120a"), Vector3(1.12, 1.0, 0.8)],
@@ -65,6 +65,7 @@ func _ready() -> void:
 		m.set_shader_parameter("team_mid", p[1])
 		m.set_shader_parameter("team_lo", p[2])
 		m.set_shader_parameter("steel_tint", p[3])
+		m.set_shader_parameter("hero_rim", 0.8 if k == "hero" else 0.12)
 		materials[k] = m
 	ready_ok = true
 

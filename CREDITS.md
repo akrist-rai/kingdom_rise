@@ -34,3 +34,9 @@ See `assets/audio/CREDITS.txt`.
 
 - Cinzel by Natanael Gama, SIL Open Font License 1.1 (`assets/fonts/Cinzel-OFL.txt`).
 - Barlow Condensed by Jeremy Tribby, SIL Open Font License 1.1 (`assets/fonts/Barlow-OFL.txt`).
+
+## Interface icons added in the Iron & Ember polish pass
+
+- [Lucide](https://lucide.dev/), Lucide Icons and Contributors. ISC license; selected inherited Feather icons also carry the MIT notice. The complete upstream notices are retained in `assets/ui/icons/LICENSE.txt`.
+- Icons are bundled SVGs; `currentColor` strokes were changed to white for Godot import and are tinted at runtime. No remote requests are made by the game.
+- Character mantle, crest, combat cues, courtyard shader, and UI layouts are original project code. Existing KayKit, Quaternius, Kenney, audio, and font credits above continue to apply.

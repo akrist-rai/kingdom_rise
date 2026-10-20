@@ -667,6 +667,8 @@ var style_a := 0.0
 var prompt_a := 0.0
 
 func _objective_text() -> String:
+	if battle.level == "combat_yard":
+		return battle.level_ctl.objective()
 	var lc = battle.level_ctl
 	if lc == null:
 		return "BREAK THE ENEMY LINE"
@@ -721,52 +723,70 @@ func _draw_player() -> void:
 	var p = battle.player
 	if p == null or not is_instance_valid(p) or p.dead:
 		return
-	var a := vit_a
-	var x := 22.0
-	var y := 336.0
-	var w := 132.0
-	var f: float = clampf(p.hp / p.max_hp, 0.0, 1.0)
-	var low := f < 0.3
-	var pulse := (0.5 + 0.5 * sin(t * 9.0)) if low else 0.0
-	draw_rect(Rect2(x - 1.5, y - 1.5, w + 3.0, 6.0), Color(0.01, 0.02, 0.04, 0.6 * a))
-	draw_rect(Rect2(x, y, w, 3.0), Color(1, 1, 1, 0.06 * a))
-	draw_rect(Rect2(x, y, w * clampf(hp_chip, 0.0, 1.0), 3.0), Color(1.0, 0.94, 0.86, 0.85 * a))
-	if p.rally > 0.0:
-		draw_rect(Rect2(x + w * f, y, w * clampf(p.rally / p.max_hp, 0.0, 1.0 - f), 3.0), Color(1.0, 0.62, 0.25, 0.7 * a))
-	var hc := Color("#e5553f").lerp(Color("#ff2a2a"), pulse * 0.6)
-	draw_rect(Rect2(x, y, w * f, 3.0), Color(hc.r, hc.g, hc.b, a))
-	draw_rect(Rect2(x, y, w * f, 1.0), Color(1.0, 0.75, 0.62, 0.55 * a))
-	# stamina (grey-gold) and spirit (five beads)
-	var sf: float = clampf(p.stamina / p.max_stamina, 0.0, 1.0)
-	var sc := Color("#e8d9a6") if p.stamina > 0.0 else Color("#ff5a4a")
-	draw_rect(Rect2(x - 1.0, y + 5.0, w * 0.72 + 2.0, 3.0), Color(0.01, 0.02, 0.04, 0.5 * a))
-	draw_rect(Rect2(x, y + 6.0, w * 0.72 * sf, 1.2), Color(sc.r, sc.g, sc.b, 0.9 * a))
-	var sp: float = p.spirit / Unit.MAX_SPIRIT
-	var ready_skill: bool = p.spirit >= p.weapon.skill_cost
-	for i in 5:
-		var c := Vector2(x + 2.0 + i * 6.0, y - 6.0)
-		var fill := clampf(sp * 5.0 - i, 0.0, 1.0)
-		var dia := PackedVector2Array([c + Vector2(0, -2), c + Vector2(2, 0), c + Vector2(0, 2), c + Vector2(-2, 0)])
-		draw_colored_polygon(dia, Color(0.02, 0.03, 0.05, 0.6 * a))
-		if fill > 0.05:
-			var dc := Color("#9fd8ff") if not ready_skill else Color("#fff1b8")
-			draw_colored_polygon(PackedVector2Array([c + Vector2(0, -1.4 * fill), c + Vector2(1.4 * fill, 0), c + Vector2(0, 1.4 * fill), c + Vector2(-1.4 * fill, 0)]), Color(dc.r, dc.g, dc.b, a))
-	# flasks
-	for i in p.max_flasks:
-		var c := Vector2(x + w + 8.0 + i * 6.0, y + 1.5)
-		draw_circle(c, 2.0, Color(0.02, 0.03, 0.05, 0.6 * a))
-		draw_circle(c, 1.3, Color("#ff8a5c") if i < p.flasks else Color(0.4, 0.38, 0.36, 0.5), true)
+	var a := maxf(0.88, vit_a)
+	var gold := Color("#e6c48b")
+	# Legible, anchored vitals. Breathing room above the screen edge keeps grass out.
+	_plate(Rect2(14,302,188,46), a)
+	_icon("swords", Rect2(23,310,12,12), gold)
+	_ta(Vector2(42,319), Game.rank_name(), 5, C_TEXT, a)
+	_ta(Vector2(191,319), "%d / %d" % [maxi(0,ceili(p.hp)),int(p.max_hp)], 5, C_TEXT, a, 2)
+	var f: float = clampf(p.hp / p.max_hp, 0, 1)
+	_line_bar(24,325,168,hp_chip,Color("#f2ddbc"),4,a)
+	_line_bar(24,325,168,f,Color("#dd735e"),4,a,p.rally/p.max_hp,Color("#edb878"))
+	_line_bar(24,334,117,p.stamina/p.max_stamina,Color("#a5cfb5"),2,a)
+	_ta(Vector2(148,337), "STAMINA", 4, C_DIM, a)
+	# Dodge charges are a separate defensive budget, visibly recharging in place.
+	var dash_at := Vector2(215,324)
+	_icon("wind",Rect2(dash_at-Vector2(0,13),Vector2(13,13)),gold)
+	for i in 2:
+		var x := dash_at.x + 18 + i*16
+		var fill: float = 1.0 if i<p.dash_charges else (1.0-p.dash_recharge/p.dash_cooldown() if i==p.dash_charges else 0.0)
+		draw_rect(Rect2(x,316,12,6),Color(0.03,0.08,0.1,0.8))
+		draw_rect(Rect2(x,316,12*clampf(fill,0,1),6),gold if i<p.dash_charges else Color("#62837e"))
+	_ta(Vector2(215,338), "SPACE / DODGE", 4, C_TEXT, 0.85)
+	# Short combo milestones make the finisher route discoverable in play.
+	if not p.weapon.ranged:
+		for i in 2:
+			var c := Vector2(305+i*10,322)
+			draw_circle(c,2.2, gold if p.combo>=i+1 and (p.state==Unit.St.ATTACK or p.combo_reset>0) else Color(0.1,0.17,0.19,0.75))
+		_ta(Vector2(310,338), "RMB / FINISH",4,gold if p.combo>=2 else C_DIM,0.9,1)
+	if p.riposte_t>0:
+		_ta(Vector2(320,293), "COUNTER READY / +35%",5,Color("#a5e4d3"),1,1)
+	# Equipment and four consistent ability tiles; bright border means usable.
+	_plate(Rect2(371,302,255,46),a)
+	_ta(Vector2(381,314),p.weapon.display_name(),5,C_TEXT,a)
+	_ta(Vector2(615,314),p.weapon.skill_name,4,gold,a,2)
+	var ready_skill: bool = p.spirit>=p.weapon.skill_cost
+	_action_tile(Rect2(381,320,53,22),"E","sparkles",p.spirit/p.weapon.skill_cost,ready_skill)
+	_action_tile(Rect2(440,320,53,22),"SHIFT","shield",1.0,p.stamina>15)
+	_action_tile(Rect2(499,320,53,22),"C","footprints",1.0-p.kick_cd/0.5,p.kick_cd<=0 and not p.mounted)
+	_action_tile(Rect2(558,320,57,22),"R / %d" % p.flasks,"flask-conical",1.0,p.flasks>0)
 	if Game.aura_ready():
-		_ta(Vector2(x + 36.0, y - 3.0), "X  AURA", 5, C_GOLD, 0.6 + 0.4 * sin(t * 5.0))
-	elif Game.aura_active():
-		_line_bar(x, y + 10.0, w, Game.aura_t / Game.AURA_DUR, C_GOLD, 1.0, a)
-	# weapon and skill, lower right
-	var wa := maxf(vit_a, 0.3)
-	_ta(Vector2(618, 340), p.weapon.display_name(), 6, C_TEXT, wa * 0.85, 2)
-	var sk_col := Color("#fff1b8") if ready_skill else C_DIM
-	_ta(Vector2(618, 349), "E  " + p.weapon.skill_name, 5, sk_col, wa * (1.0 if ready_skill else 0.6), 2)
-	if p.weapon.clip > 0:
-		_ta(Vector2(618, 331), "RELOADING" if p.reload_t > 0 else "%d / %d" % [p.ammo, p.weapon.clip], 5, C_DIM, wa, 2)
+		_ta(Vector2(320,280),"X / UNLEASH AURA",5,gold,0.8+sin(t*4)*0.2,1)
+
+var polish_icons := {}
+func _icon(id: String, rect: Rect2, col: Color) -> void:
+	if not polish_icons.has(id):
+		polish_icons[id] = load("res://assets/ui/icons/%s.svg" % id)
+	var texture: Texture2D = polish_icons[id]
+	if texture != null:
+		draw_texture_rect(texture, rect, false, col)
+
+func _plate(rect: Rect2, a: float = 1.0) -> void:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(0.035,0.075,0.095,0.91*a)
+	box.border_color = Color(0.78,0.66,0.45,0.3*a)
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(3)
+	draw_style_box(box,rect)
+	draw_line(rect.position+Vector2(10,0),rect.position+Vector2(34,0),Color(0.91,0.77,0.53,a),1,true)
+
+func _action_tile(rect: Rect2, key: String, id: String, progress: float, ready: bool) -> void:
+	var col := Color("#e6c48b") if ready else Color("#6d8388")
+	draw_rect(rect,Color(0.11,0.18,0.2,0.7))
+	_icon(id,Rect2(rect.position+Vector2(5,4),Vector2(13,13)),col)
+	_ta(rect.position+Vector2(23,14),key,4,col,1)
+	draw_rect(Rect2(rect.position+Vector2(0,21),Vector2(rect.size.x*clampf(progress,0,1),1)),col)
 
 ## Rank progress as a hairline along the top edge (lit when you earn XP); the style rank
 ## appears at the right only while you are fighting with style.
@@ -939,7 +959,7 @@ func _draw_hints() -> void:
 	if help_on or Game.command_view or help_t <= 0.0:
 		return
 	var a := clampf(help_t, 0.0, 1.0) * clampf((9.0 - help_t) / 1.0, 0.0, 1.0) * 0.75
-	_ta(Vector2(320, 300), "WASD  MOVE      CLICK  ATTACK      RIGHT CLICK  HEAVY      SPACE  DASH      SHIFT  GUARD      H  CONTROLS", 4, C_TEXT, a, 1)
+	_ta(Vector2(320, 300), "WASD  MOVE      CLICK  ATTACK      RIGHT CLICK  HEAVY      SPACE  DODGE      SHIFT  PARRY      H  CONTROLS", 4, C_TEXT, a, 1)
 
 ## Context prompt (pick up, mount, challenge) floating over your soldier.
 func _draw_prompt() -> void:
@@ -961,9 +981,9 @@ func _draw_help_panel() -> void:
 	_rule_pair(Vector2(320, 54), 70.0, 60.0, Color(C_GOLD.r, C_GOLD.g, C_GOLD.b, 0.6))
 	var rows = [
 		["WASD", "Move  /  pan the camera in command view"],
-		["LEFT / RIGHT MOUSE", "Light attack  /  heavy attack (hold to charge)"],
+		["LEFT / RIGHT MOUSE", "Hold light to chain  /  heavy (hold to charge)"],
 		["LIGHT, LIGHT, HEAVY", "Weapon finisher"],
-		["SPACE", "Dash (invincible for an instant)"],
+		["SPACE", "Two dodge charges / perfect dodge powers your next strike"],
 		["SHIFT", "Guard  /  tap just before a blow lands to parry"],
 		["E  /  R", "Weapon skill (spends spirit)  /  drink a flask"],
 		["F  /  C  /  T", "Interact, mount or duel  /  kick  /  throw your weapon"],
@@ -973,7 +993,7 @@ func _draw_help_panel() -> void:
 		["Q  /  4 / 5 / 6", "Cycle formation  /  line, wedge, square"],
 		["SCROLL  /  F6", "Combat zoom  /  army density"],
 		["BACKSPACE", "Choose another soldier after you fall (Enter takes him)"],
-		["ESC  /  F2  /  F11", "Pause  /  low graphics  /  fullscreen"]]
+		["ESC / F2 / F7 / F11", "Pause / low graphics / reduce camera motion / fullscreen"]]
 	for i in rows.size():
 		var y := 80 + i * 17
 		_ta(Vector2(300, y), rows[i][0], 5, C_GOLD, 1.0, 2)
@@ -990,14 +1010,14 @@ func _draw_banner() -> void:
 	var a := clampf(bt / 0.5, 0.0, 1.0) * clampf((dur - bt) / 0.7, 0.0, 1.0)
 	var title := str(b["title"])
 	var big: bool = b["big"]
-	var sz := 15 if big else 10
+	var sz := 10 if big else 8
 	while Game.text_w(title, sz, 1) > 540 and sz > 6:
 		sz -= 1
 	var rise := (1.0 - clampf(bt / 0.6, 0.0, 1.0)) * 6.0
-	var y := 92.0 + rise
+	var y := 59.0 + rise
 	var tw := Game.text_w(title, sz, 1)
 	if big:
-		_soft_band(y - 5.0, 46.0, 0.35 * a)
+		_soft_band(y - 5.0, 32.0, 0.45 * a)
 	var col: Color = b["col"]
 	_rule_pair(Vector2(320, y - Game.text_size(sz, 1) * 0.42), tw * 0.5 + 14.0, 46.0 * a, Color(col.r, col.g, col.b, 0.7 * a))
 	Game.text(self, Vector2(320, y), title, sz, Color(C_TEXT.r, C_TEXT.g, C_TEXT.b, a), 1, 1)
@@ -1014,9 +1034,9 @@ func _draw_stamp() -> void:
 	if tx == null:
 		return
 	var k := clampf(st / 0.22, 0.0, 1.0)
-	var sc := lerpf(3.4, 1.6, 1.0 - (1.0 - k) * (1.0 - k)) + sin(minf(st, 0.5) * TAU * 2.0) * 0.08 * (1.0 - k)
+	var sc := lerpf(1.3, 0.75, 1.0 - (1.0 - k) * (1.0 - k)) + sin(minf(st, 0.5) * TAU * 2.0) * 0.08 * (1.0 - k)
 	var sz := tx.get_size() * sc
-	var c := Vector2(320, 150)
+	var c := Vector2(320, 103)
 	draw_texture_rect(tx, Rect2(c - sz * 0.5 + Vector2(1.5, 2.0), sz), false, Color(0, 0, 0, 0.45 * a))
 	draw_texture_rect(tx, Rect2(c - sz * 0.5, sz), false, Color(1, 1, 1, a))
 	# a glint sweeping across once it lands

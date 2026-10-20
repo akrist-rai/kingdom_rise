@@ -15,6 +15,7 @@ var react_id := -1
 var guard_t := 0.0
 var combo_left := 0
 var token := false
+var attack_committed := false
 var spectate := false
 var ring_pos := Vector2.ZERO
 var rout := false
@@ -234,7 +235,7 @@ func _melee(u: Unit, delta: float) -> void:
 		_march(u)
 		return
 	# Defensive reactions to the target's attacks.
-	if target.state == Unit.St.ATTACK and target.attack_id != react_id and d < target.weapon.reach + 34.0:
+	if u.state in [Unit.St.IDLE, Unit.St.GUARD] and target.state == Unit.St.ATTACK and target.attack_id != react_id and d < target.weapon.reach + 34.0:
 		react_id = target.attack_id
 		var chance := u.ai_skill * (1.0 if target.is_player else 0.4)
 		if randf() < chance:
@@ -252,9 +253,14 @@ func _melee(u: Unit, delta: float) -> void:
 			u.enter_guard()
 		u.i_move = to.normalized().orthogonal() * strafe * 0.4
 		return
+	# Yield the opening to another soldier after a completed exchange.
+	if target.is_player and attack_committed and u.state == Unit.St.IDLE:
+		_release(u)
+		attack_committed = false
+		atk_cd = maxf(atk_cd, randf_range(0.65, 1.0))
 	# Attack tokens for the player.
 	if target.is_player:
-		if not token:
+		if not token and atk_cd <= 0.0:
 			token = b.request_token(u)
 		if not token:
 			var want := 64.0 + slot % 3 * 14.0
@@ -281,6 +287,7 @@ func _melee(u: Unit, delta: float) -> void:
 		return
 	if atk_cd <= 0.0 and u.state == Unit.St.IDLE:
 		var vs_player := target.is_player
+		attack_committed = vs_player
 		if randf() < (0.22 if role == "officer" else 0.12):
 			u.do_heavy()
 		else:

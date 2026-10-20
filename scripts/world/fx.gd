@@ -157,10 +157,13 @@ func swing_trail(u: Unit, mv: Dictionary) -> void:
 	if mv.get("perilous", false):
 		col = Color(1.0, 0.3, 0.25, 0.95)
 	if u.is_player:
-		w *= 1.25
+		w *= 1.7
 		if mv.get("finisher", false):
-			col = Color(1.0, 0.82, 0.42, 1.0)
+			col = Color(1.0, 0.72, 0.35, 0.95)
 			w *= 1.35
+	if u.is_player and mv.get("riposte", false):
+		col = Color(0.55, 1.0, 0.87, 0.95)
+		w *= 1.2
 	var pts := UnitArt.trail(u.aset, u.mv_anim, u.dir8)
 	if pts.size() < 2:
 		return
@@ -178,9 +181,18 @@ func ring(p: Vector2, r: float, col: Color, dur: float) -> void:
 	rings.append({"p": p, "r": r, "col": col, "dur": dur, "t": 0.0})
 
 func text(p: Vector2, s: String, col: Color) -> void:
-	if texts.size() > 30:
+	# Merge repeated messages in a crowd and stack the few distinct ones.
+	var close := 0
+	for e in texts:
+		if (e["p"] as Vector2).distance_squared_to(p)<1600 and float(e["t"])<0.55:
+			if e["s"]==s:
+				return
+			close += 1
+	if close>=3:
+		return
+	if texts.size()>20:
 		texts.remove_at(0)
-	texts.append({"p": p, "s": s, "col": col, "t": 0.0})
+	texts.append({"p":p+Vector2(0,-close*10),"s":s,"col":col,"t":0.0})
 
 func glint(u: Unit, red: bool) -> void:
 	if battle.on_screen(u.global_position):
@@ -442,7 +454,7 @@ func _draw_impl() -> void:
 		var p: Vector2 = e["p"] + Vector2(0, -rise * 16.0)
 		var col: Color = e["col"]
 		var a := 1.0 - smoothstep(0.65, 1.0, k)
-		Game.text(self, p, e["s"], 6, Color(col.r, col.g, col.b, a), 1)
+		Game.text(self, p, e["s"], 5, Color(col.r, col.g, col.b, a), 1)
 
 # ------------------------------------------------------------------ drawing: additive layer
 func _draw_add() -> void:

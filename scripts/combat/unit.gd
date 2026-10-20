@@ -104,6 +104,7 @@ var brain_tick := true       # false: this frame the AI keeps its last decision 
 var brain_acc := 0.0
 var death_t := 0.0
 var hit_flash := 0.0
+var hit_strength := 1.0
 var show_bar_t := 0.0
 var parry_t := 0.0
 var parry_cd := 0.0
@@ -130,6 +131,14 @@ var charging := false
 var ammo := 0
 var reload_t := 0.0
 var dash_window := 0.0
+var dash_charges := 2
+const DASH_RECHARGE := 0.78
+var dash_recharge := 0.0
+var dash_rewarded := false
+var riposte_t := 0.0
+var recovery_hit := -1
+var impact_attack := -1
+var cost_feedback_t := 0.0
 var dash_dir := Vector2.RIGHT
 var crit_target: Unit = null
 var crit_done := false
@@ -377,8 +386,20 @@ func become_player() -> void:
 		hp = max_hp * maxf(ratio, 0.65)
 		invuln = 1.5
 	stamina = max_stamina
+	dash_charges = 2
+	dash_recharge = 0.0
+	riposte_t = 0.0
 	spirit = maxf(spirit, 30.0)
 	palette = "hero"
+	if not has_node("HeroMantle"):
+		var mantle := HeroMantle.new()
+		mantle.name = "HeroMantle"
+		mantle.unit = self
+		add_child(mantle)
+		move_child(mantle, 0)
+		var crest := HeroMantle.Crest.new()
+		crest.unit = self
+		add_child(crest)
 	_apply_palette()
 	if mounted:
 		horse_max = 140.0
@@ -503,6 +524,13 @@ func _timers(delta: float) -> void:
 	guard_counter_t -= delta
 	combo_reset -= delta
 	dash_window -= delta
+	riposte_t = maxf(0.0, riposte_t - delta)
+	cost_feedback_t = maxf(0.0, cost_feedback_t - delta)
+	if is_player and dash_charges < 2:
+		dash_recharge -= delta
+		if dash_recharge <= 0.0:
+			dash_charges += 1
+			dash_recharge = dash_cooldown() if dash_charges < 2 else 0.0
 	show_bar_t -= delta
 	cheer_t -= delta
 	if combo_reset <= 0.0 and state != St.ATTACK:
@@ -564,7 +592,10 @@ func _buffer(delta: float) -> void:
 	queued_t -= delta
 	if queued_t <= 0.0:
 		queued = ""
-	if i_light:
+	if i_dash:
+		queued = "dash"
+		queued_t = 0.18
+	elif i_light:
 		queued = "light"
 		queued_t = 0.22
 	elif i_heavy:
@@ -573,9 +604,6 @@ func _buffer(delta: float) -> void:
 	elif i_skill:
 		queued = "skill"
 		queued_t = 0.22
-	elif i_dash:
-		queued = "dash"
-		queued_t = 0.18
 	elif i_flask:
 		queued = "flask"
 		queued_t = 0.15
@@ -639,6 +667,10 @@ func _st_idle(_delta: float) -> void:
 		return
 	if i_guard:
 		enter_guard()
+		if i_guard_pressed and parry_cd <= 0.0:
+			open_parry()
+	elif i_light_held and not weapon.ranged:
+		do_light()
 
 func enter_guard() -> void:
 	state = St.GUARD
@@ -703,7 +735,10 @@ func do_light() -> void:
 		return
 	var m: Dictionary = weapon.combo[combo % weapon.combo.size()]
 	combo += 1
+	var previous_attack := attack_id
 	start_move(m, "light")
+	if attack_id == previous_attack:
+		combo -= 1
 
 func do_heavy() -> void:
 	if weapon.heavy.is_empty():
@@ -738,9 +773,12 @@ func _finisher() -> void:
 			m["arc"] = 160.0
 			m["a0"] = 70.0
 			m["a1"] = -150.0
+	var previous_attack := attack_id
+	start_move(m, "finisher")
+	if attack_id == previous_attack:
+		return
 	combo = 0
 	Game.stats["finishers"] = int(Game.stats.get("finishers", 0)) + 1
-	start_move(m, "finisher")
 	if battle:
 		battle.fx.text(global_position + Vector2(0, -34), "FINISHER", Color("#ffd166"))
 	Game.add_style("finisher", 70.0, "FINISHER", Color("#ffd166"))
@@ -750,13 +788,25 @@ func start_move(m: Dictionary, tag: String) -> void:
 		return
 	var cost: float = float(m.get("cost", 8.0))
 	if is_player:
-		if stamina <= 0.0:
-			Sfx.play("ui", -10.0, 0.6)
+		cost *= 0.5 if Game.aura_active() else 1.0
+		if stamina < cost:
+			if cost_feedback_t <= 0.0:
+				cost_feedback_t = 0.65
+				battle.fx.text(global_position + Vector2(0, -36), "CATCH YOUR BREATH", Color("#e4cda2"))
 			return
-		stamina -= cost * (0.5 if Game.aura_active() else 1.0)
-		stam_delay = 0.55
+		stamina = maxf(0.0, stamina - cost)
+		stam_delay = 0.22
 	state = St.ATTACK
-	mv = m
+	mv = m.duplicate()
+	if is_player:
+		# Shared weapon definitions stay immutable. Heavy weapons retain commitment.
+		mv["w"] = maxf(0.04, float(mv["w"]) * 0.85)
+		mv["r"] = float(mv["r"]) * 0.82
+		if riposte_t > 0.0 and tag in ["light", "dash", "heavy"]:
+			mv["dmg"] = float(mv["dmg"]) * 1.35
+			mv["st"] = float(mv["st"]) * 1.5
+			mv["riposte"] = true
+			riposte_t = 0.0
 	mv_kind = tag
 	mv_anim = _move_anim(m, tag)
 	mv_phase = 0
@@ -766,10 +816,10 @@ func start_move(m: Dictionary, tag: String) -> void:
 	charge = 0.0
 	attack_id += 1
 	hyper = m.get("hyper", false)
-	mv_w = float(m["w"]) * (1.0 if is_player else ai_windup)
+	mv_w = float(mv["w"]) * (1.0 if is_player else ai_windup)
 	if not is_player:
 		# readable telegraphs: AI wind-ups are never shorter than this
-		mv_w = maxf(mv_w, 0.16 if is_boss else 0.22)
+		mv_w = maxf(mv_w, 0.28 if is_boss else 0.34)
 	if is_boss and battle and battle.boss_phase >= 3:
 		mv_w *= 0.85
 	charging = is_player and (tag == "heavy" or (weapon.id == "bow" and tag == "light"))
@@ -788,7 +838,7 @@ func _st_attack(delta: float) -> void:
 	var rest := deg_to_rad(weapon.rest)
 	match mv_phase:
 		0:
-			if is_player and not hyper and _consume("dash"):
+			if is_player and _consume("dash"):
 				try_dash()
 				return
 			if is_player:
@@ -796,7 +846,7 @@ func _st_attack(delta: float) -> void:
 					aim = (lock_target.global_position - global_position).normalized()
 				else:
 					_face_aim()
-			else:
+			elif mv_t < mv_w * 0.62:
 				_face_aim(5.0 * delta)
 			if charging:
 				var held := i_heavy_held if mv_kind == "heavy" else i_light_held
@@ -840,6 +890,12 @@ func _st_attack(delta: float) -> void:
 				if _consume("dash"):
 					try_dash()
 					return
+				if i_guard and mv_t >= minf(0.045, rec * 0.3):
+					hyper = false
+					enter_guard()
+					if i_guard_pressed and parry_cd <= 0.0:
+						open_parry()
+					return
 				if mv_t >= rec * 0.3:
 					if queued == "light":
 						_consume("light")
@@ -859,7 +915,7 @@ func _st_attack(delta: float) -> void:
 					if _consume("throw"):
 						if try_throw():
 							return
-				if weapon.id == "crossbow" and i_light_held and mv_t >= rec * 0.6:
+				if i_light_held and (not weapon.ranged or weapon.id == "crossbow") and queued == "" and mv_t >= rec * 0.65:
 					do_light()
 					return
 			if mv_t >= rec:
@@ -1000,6 +1056,8 @@ func _hit_check() -> void:
 				ok = t > -6.0 and t < reach + e.radius and perp <= width + e.radius
 			"circle":
 				ok = true
+		if ok and battle.terrain != null and battle.terrain.blocked(global_position, e.global_position):
+			ok = false
 		if ok:
 			mv_hit[e] = true
 			var mult := 1.0
@@ -1019,6 +1077,9 @@ func _hit_check() -> void:
 				battle.fx.hit_star(e.global_position + Vector2(0, -8), 10.0, Color(0.85, 0.92, 1.0))
 				Sfx.play_at("hit_heavy", e.global_position, -3.0, 0.8)
 
+	if battle.interactables != null:
+		battle.interactables.strike(self, reach, mv)
+
 func _quake(r: float) -> void:
 	battle.fx.ring(global_position, r, Color(0.9, 0.95, 1.0, 0.8), 0.35)
 	if is_player or battle.on_screen(global_position):
@@ -1028,6 +1089,8 @@ func _quake(r: float) -> void:
 		if e == self or e.dead or e.faction == faction or mv_hit.has(e):
 			continue
 		if e.global_position.distance_to(global_position) <= r + e.radius:
+			if battle.terrain != null and battle.terrain.blocked(global_position,e.global_position):
+				continue
 			var h := make_hit(mv, 0.5)
 			h["knockdown"] = true
 			e.take_hit(self, h)
@@ -1070,12 +1133,19 @@ func make_hit(m: Dictionary, mult: float = 1.0) -> Dictionary:
 	}
 
 # ------------------------------------------------------------------ dash / crit / flask
+func dash_cooldown() -> float:
+	return DASH_RECHARGE * (0.7 if is_player and Game.has_perk("ghost_step") else 1.0)
+
 func try_dash() -> bool:
-	var cost := 20.0 * (0.7 if (is_player and Game.has_perk("ghost_step")) else 1.0)
-	if is_player and stamina <= 0.0:
-		return false
-	stamina -= cost
-	stam_delay = 0.45
+	if is_player:
+		if dash_charges <= 0:
+			return false
+		dash_charges -= 1
+		if dash_recharge <= 0.0:
+			dash_recharge = dash_cooldown()
+	dash_rewarded = false
+	charging = false
+	lock_target = null
 	state = St.DASH
 	st_t = 0.0
 	st_dur = 0.3 if (mounted and is_player) else 0.17
@@ -1222,7 +1292,7 @@ func _st_crit(delta: float) -> void:
 func try_kick() -> bool:
 	if kick_cd > 0.0 or weapon == null or mounted:
 		return false
-	if is_player and stamina <= 0.0:
+	if is_player and stamina < 12.0:
 		return false
 	var m := Weapon.mv(0.06, 0.07, 0.2, 0.35, weapon.rest, weapon.rest, {"kick": true, "lunge": 110.0, "kb": 300.0,
 		"pz": 999.0, "st": 22.0, "cost": 12.0, "sfx": "swing_fast", "arc": 120.0, "trail": 0.0})
@@ -1344,7 +1414,11 @@ func take_hit(src: Unit, h: Dictionary) -> String:
 	var ranged: bool = h.get("ranged", false)
 	# Invincibility frames (dash) — a perfect dodge earns style.
 	if invuln > 0.0:
-		if is_player and state == St.DASH:
+		if is_player and state == St.DASH and not dash_rewarded:
+			dash_rewarded = true
+			riposte_t = 1.0
+			stamina = minf(max_stamina, stamina + 14.0)
+			battle.fx.ring(global_position, 23.0, Color("#80e5dd"), 0.25)
 			Game.add_style("dodge", 55.0, "CLOSE CALL", Color("#7cf0ff"))
 			Game.stats["dodges"] += 1
 			spirit = minf(MAX_SPIRIT, spirit + 5.0)
@@ -1439,13 +1513,17 @@ func take_hit(src: Unit, h: Dictionary) -> String:
 		if horse_hp <= 0.0:
 			dismount(true)
 	hp -= dmg
-	hit_flash = 0.07
+	hit_flash = 0.065 if src_player or is_player else 0.02
+	hit_strength = 1.0 if src_player or is_player else 0.25
 	show_bar_t = 4.0
 	if src_player:
 		Game.stats["dmg"] += dmg
 		Game.register_hit()
 		src.spirit = minf(MAX_SPIRIT, src.spirit + dmg * 0.35 * src._spirit_k())
 		src.rally_recover(dmg)
+		if src.recovery_hit != src.attack_id:
+			src.recovery_hit = src.attack_id
+			src.stamina = minf(src.max_stamina, src.stamina + 4.0)
 		if h.get("crit", false) or dmg >= 45.0:
 			battle.fx.text(global_position + Vector2(randf_range(-6, 6), -40), str(int(round(dmg))),
 				Color("#ffe8a3") if not h.get("crit", false) else Color("#ff4d4d"))
@@ -1536,8 +1614,9 @@ func take_hit(src: Unit, h: Dictionary) -> String:
 			Color(1.0, 0.4, 0.32) if crit_hit else Color(1.0, 0.97, 0.88))
 		if heavy_hit or hp <= 0.0:
 			battle.fx.blood_arc(global_position + Vector2(0, -10), -from, 11.0 if heavy_hit else 8.0)
-	if src_player and not h.get("crit", false):
-		Game.hitstop((0.05 if not heavy_hit else 0.085) + (0.05 if hp <= 0.0 else 0.0))
+	if src_player and not h.get("crit", false) and src.impact_attack != src.attack_id:
+		src.impact_attack = src.attack_id
+		Game.hitstop(0.024 if not heavy_hit and hp > 0.0 else 0.052)
 		battle.cam.kick(-from * (2.0 if not heavy_hit else 3.5))
 		battle.cam.punch(0.014 if not heavy_hit else 0.026)
 		if hp <= 0.0:
@@ -1579,6 +1658,8 @@ func _on_parry_success(src: Unit) -> void:
 			battle.atmos.aberrate(3.0)
 		Game.add_style("parry", 100.0, "PARRY", Color("#ffffff"))
 		Game.stats["parries"] += 1
+		riposte_t = 1.2
+		stamina = minf(max_stamina, stamina + 26.0)
 		spirit = minf(MAX_SPIRIT, spirit + 18.0 * _spirit_k())
 		Game.hitstop(0.13)
 		battle.cam_shake(4.0)
@@ -1692,7 +1773,7 @@ func move_speed() -> float:
 			s *= 0.35
 		St.ATTACK:
 			if is_player:
-				s *= 0.3 if mv_phase < 2 else 0.55
+				s *= (0.42 if mv_kind in ["heavy", "finisher"] else 0.64) if mv_phase < 2 else 0.86
 			else:
 				s *= 0.15
 			if charging:
@@ -1808,7 +1889,7 @@ func _visuals(delta: float) -> void:
 	# flash / tint (values above 1 whiten in the unit shader)
 	var mod := tint
 	if hit_flash > 0.0:
-		mod = Color(2.4, 2.4, 2.4)
+		mod = Color(1.0+hit_strength, 1.0+hit_strength, 1.0+hit_strength)
 	elif is_player and invuln > 0.0 and state != St.DASH and state != St.CRIT and int(anim_t * 16.0) % 2 == 0:
 		mod = Color(1.45, 1.4, 1.3, 0.8)
 	elif state == St.BROKEN:

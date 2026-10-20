@@ -464,7 +464,16 @@ func _draw()->void:
 				var p:Vector2=r["dest"]
 				var d:Vector2=r["wanted_dir"]
 				draw_line(p-d.orthogonal()*48,p+d.orthogonal()*48,Color(0.96,0.86,0.61,0.65),1.1,true)
-				draw_dashed_line(r["at"],p,Color(0.96,0.86,0.61,0.27),0.8,12,true)
+				# Display the actual route around buildings, then queued waypoints.
+				var route: PackedVector2Array=r["path"]
+				var previous: Vector2=r["at"]
+				for k in range(int(r["path_i"]),route.size()):
+					draw_dashed_line(previous,route[k],Color(0.96,0.86,0.61,0.4),1.0,10,true)
+					previous=route[k]
+				for command in r["queue"]:
+					draw_dashed_line(previous,command["point"],Color(0.65,0.86,0.81,0.35),0.8,9,true)
+					previous=command["point"]
+					draw_arc(previous,5,0,TAU,16,Color(0.65,0.86,0.81,0.8),1.0,true)
 	if right_down:
 		var end=_mouse_world()
 		var d=(end-right_start).normalized()

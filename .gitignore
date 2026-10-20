@@ -1,0 +1,6 @@
+.godot/
+**/.godot/
+*.tmp
+*.log
+.DS_Store
+assets/audio/music/.*

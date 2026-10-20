@@ -26,10 +26,10 @@ vec3 meadow(vec2 p) {
 	// painterly bands of colour (soft-edged posterisation)
 	float g = big * 0.7 + mid * 0.3;
 	float gq = floor(g * 6.0) / 6.0 + smoothstep(0.35, 0.65, fract(g * 6.0)) / 6.0;
-	vec3 deep = vec3(0.24, 0.39, 0.2);
-	vec3 lush = vec3(0.38, 0.53, 0.24);
-	vec3 light = vec3(0.55, 0.64, 0.3);
-	vec3 straw = vec3(0.71, 0.66, 0.38);
+	vec3 deep = vec3(0.18, 0.29, 0.25);
+	vec3 lush = vec3(0.32, 0.43, 0.31);
+	vec3 light = vec3(0.5, 0.57, 0.36);
+	vec3 straw = vec3(0.72, 0.67, 0.45);
 	vec3 col = gq < 0.4 ? mix(deep, lush, smoothstep(0.2, 0.4, gq)) : gq < 0.62 ? mix(lush, light, (gq - 0.4) / 0.22) : mix(light, straw, smoothstep(0.62, 0.85, gq));
 	// grass strokes: short, slightly slanted dashes of light and shade
 	vec2 sp = p * vec2(0.55, 0.22) + vec2(p.y * 0.12, 0.0);
@@ -44,7 +44,7 @@ vec3 meadow(vec2 p) {
 vec3 earth(vec2 p, float wet) {
 	float n = fbm3(p * 0.03);
 	float pebble = step(0.86, vnoise(p * 0.55)) * 0.06;
-	vec3 dry = vec3(0.6, 0.5, 0.36);
+	vec3 dry = vec3(0.68, 0.59, 0.45);
 	vec3 mud = vec3(0.34, 0.28, 0.22);
 	vec3 c = mix(dry, mud, wet) * (0.88 + n * 0.22) + pebble;
 	return c;

@@ -19,7 +19,7 @@ const KEYS := {
 		"shadow_col": Color(0.07, 0.08, 0.22),
 		"sky_top": Color(0.13, 0.23, 0.31), "sky_mid": Color(0.45, 0.58, 0.67), "sky_low": Color(0.98, 0.72, 0.6),
 		"sun_col": Color(1.0, 0.78, 0.64), "sun_y": -60.0, "stars": 0.0, "night": 0.15, "snow": 0.6,
-		"pal_dark": Color(0.04, 0.07, 0.16), "pal_mid": Color(0.38, 0.43, 0.62), "pal_light": Color(0.98, 0.88, 0.8), "poster": 0.1, "cloud_tint": Color(0.52, 0.56, 0.86), "paper": 0.3, "tilt": 0.45,
+		"pal_dark": Color(0.04, 0.07, 0.16), "pal_mid": Color(0.38, 0.43, 0.62), "pal_light": Color(0.98, 0.88, 0.8), "poster": 0.1, "cloud_tint": Color(0.52, 0.56, 0.86), "paper": 0.3, "tilt": 0.08,
 	},
 	"sunset": {
 		"ambient": Color(0.98, 0.86, 0.84), "light_gain": 1.7, "bloom": 0.6,
@@ -30,7 +30,7 @@ const KEYS := {
 		"shadow_col": Color(0.06, 0.08, 0.18),
 		"sky_top": Color(0.1, 0.17, 0.27), "sky_mid": Color(0.44, 0.48, 0.6), "sky_low": Color(1.0, 0.6, 0.48),
 		"sun_col": Color(1.0, 0.62, 0.45), "sun_y": -40.0, "stars": 0.12, "night": 0.3, "snow": 0.75,
-		"pal_dark": Color(0.05, 0.05, 0.14), "pal_mid": Color(0.46, 0.39, 0.58), "pal_light": Color(1.0, 0.8, 0.66), "poster": 0.1, "cloud_tint": Color(0.48, 0.46, 0.8), "paper": 0.3, "tilt": 0.45,
+		"pal_dark": Color(0.05, 0.05, 0.14), "pal_mid": Color(0.46, 0.39, 0.58), "pal_light": Color(1.0, 0.8, 0.66), "poster": 0.1, "cloud_tint": Color(0.48, 0.46, 0.8), "paper": 0.3, "tilt": 0.08,
 	},
 	"dusk": {
 		"ambient": Color(0.5, 0.6, 0.74), "light_gain": 2.3, "bloom": 0.85,
@@ -41,7 +41,7 @@ const KEYS := {
 		"shadow_col": Color(0.02, 0.06, 0.12),
 		"sky_top": Color(0.03, 0.07, 0.12), "sky_mid": Color(0.14, 0.24, 0.33), "sky_low": Color(0.62, 0.46, 0.46),
 		"sun_col": Color(0.9, 0.56, 0.48), "sun_y": -10.0, "stars": 1.0, "night": 1.0, "snow": 1.0,
-		"pal_dark": Color(0.02, 0.03, 0.1), "pal_mid": Color(0.25, 0.3, 0.52), "pal_light": Color(0.9, 0.86, 0.9), "poster": 0.08, "cloud_tint": Color(0.6, 0.62, 0.9), "paper": 0.3, "tilt": 0.45,
+		"pal_dark": Color(0.02, 0.03, 0.1), "pal_mid": Color(0.25, 0.3, 0.52), "pal_light": Color(0.9, 0.86, 0.9), "poster": 0.08, "cloud_tint": Color(0.6, 0.62, 0.9), "paper": 0.3, "tilt": 0.08,
 	},
 	"wrath": {
 		"ambient": Color(0.86, 0.6, 0.56), "light_gain": 1.9, "bloom": 0.85,
@@ -52,20 +52,20 @@ const KEYS := {
 		"shadow_col": Color(0.12, 0.03, 0.08),
 		"sky_top": Color(0.1, 0.04, 0.07), "sky_mid": Color(0.5, 0.16, 0.14), "sky_low": Color(1.0, 0.55, 0.26),
 		"sun_col": Color(1.0, 0.45, 0.22), "sun_y": -60.0, "stars": 0.0, "night": 0.7, "snow": 1.2,
-		"pal_dark": Color(0.06, 0.04, 0.08), "pal_mid": Color(0.66, 0.28, 0.2), "pal_light": Color(1.0, 0.82, 0.56), "poster": 0.08, "cloud_tint": Color(0.62, 0.32, 0.4), "paper": 0.3, "tilt": 0.45,
+		"pal_dark": Color(0.06, 0.04, 0.08), "pal_mid": Color(0.66, 0.28, 0.2), "pal_light": Color(1.0, 0.82, 0.56), "poster": 0.08, "cloud_tint": Color(0.62, 0.32, 0.4), "paper": 0.3, "tilt": 0.08,
 	},
 	# The Siege of Handan: a deep blue-violet night, the city burning (fire-lit horizon,
 	# salmon highlights, violet shadows).
 	"siege": {
 		"ambient": Color(1.02, 1.0, 0.95), "light_gain": 0.85, "bloom": 0.32,
-		"ray_col": Color(1.0, 0.86, 0.6), "ray": 0.07, "ray_dir": Vector2(0.62, 0.78), "cloud": 0.17,
+		"ray_col": Color(1.0, 0.86, 0.6), "ray": 0.07, "ray_dir": Vector2(0.62, 0.78), "cloud": 0.08,
 		"fog_col": Color(0.78, 0.84, 0.86), "fog": 0.035, "haze": 0.16,
-		"shadow_tint": Color(0.86, 0.95, 1.08), "high_tint": Color(1.07, 1.0, 0.88), "sat": 1.12, "contrast": 1.12,
-		"vignette": 0.36, "shadow_dir": Vector2(0.66, 0.3), "shadow_len": 1.4, "shadow_alpha": 0.3,
+		"shadow_tint": Color(0.86, 0.95, 1.08), "high_tint": Color(1.07, 1.0, 0.88), "sat": 0.98, "contrast": 1.06,
+		"vignette": 0.23, "shadow_dir": Vector2(0.66, 0.3), "shadow_len": 1.4, "shadow_alpha": 0.3,
 		"shadow_col": Color(0.08, 0.12, 0.2),
 		"sky_top": Color(0.25, 0.47, 0.55), "sky_mid": Color(0.59, 0.72, 0.69), "sky_low": Color(0.98, 0.86, 0.62),
 		"sun_col": Color(1.0, 0.9, 0.67), "sun_y": -80.0, "stars": 0.0, "night": 0.0, "snow": 0.03,
-		"pal_dark": Color(0.08, 0.14, 0.2), "pal_mid": Color(0.5, 0.56, 0.42), "pal_light": Color(1.0, 0.94, 0.78), "poster": 0.0, "cloud_tint": Color(0.5, 0.58, 0.72), "paper": 0.22, "tilt": 0.6,
+		"pal_dark": Color(0.08, 0.14, 0.2), "pal_mid": Color(0.5, 0.56, 0.42), "pal_light": Color(1.0, 0.94, 0.78), "poster": 0.0, "cloud_tint": Color(0.5, 0.58, 0.72), "paper": 0.22, "tilt": 0.06,
 	},
 
 	"victory": {
@@ -77,7 +77,7 @@ const KEYS := {
 		"shadow_col": Color(0.06, 0.12, 0.22),
 		"sky_top": Color(0.2, 0.3, 0.42), "sky_mid": Color(0.62, 0.66, 0.74), "sky_low": Color(1.0, 0.8, 0.64),
 		"sun_col": Color(1.0, 0.84, 0.68), "sun_y": -90.0, "stars": 0.0, "night": 0.0, "snow": 0.2,
-		"pal_dark": Color(0.05, 0.12, 0.2), "pal_mid": Color(0.5, 0.56, 0.64), "pal_light": Color(1.0, 0.92, 0.82), "poster": 0.08, "cloud_tint": Color(0.56, 0.66, 0.9), "paper": 0.3, "tilt": 0.45,
+		"pal_dark": Color(0.05, 0.12, 0.2), "pal_mid": Color(0.5, 0.56, 0.64), "pal_light": Color(1.0, 0.92, 0.82), "poster": 0.08, "cloud_tint": Color(0.56, 0.66, 0.9), "paper": 0.3, "tilt": 0.08,
 	},
 }
 

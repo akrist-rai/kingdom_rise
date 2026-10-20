@@ -62,7 +62,13 @@ func _update_shots(delta: float) -> void:
 		s["life"] -= delta
 		var dead := false
 		var pos: Vector2 = s["pos"]
-		for e in battle.query(pos, 20.0):
+		# Direct-fire city/yard shots meet the same footprints as their targets.
+		# Siege archery keeps its existing elevated wall-fire behaviour.
+		if battle.terrain != null and battle.level != "siege" and battle.terrain.blocked(prev+Vector2(0,9),pos+Vector2(0,9)):
+			dead = true
+			pos = prev
+			s["pos"] = prev
+		for e in ([] if dead else battle.query(pos, 20.0)):
 			if e.dead or e.faction == s["faction"] or s["hits"].has(e):
 				continue
 			var c: Vector2 = e.global_position + Vector2(0, -9)
@@ -101,6 +107,8 @@ func _update_shots(delta: float) -> void:
 			dead = true
 		if dead and s["kind"] == "thrown":
 			var land := Vector2(clampf(pos.x, 40.0, Battle.W - 40.0), clampf(pos.y + 9.0, Battle.TOP, Battle.BOT))
+			if battle.terrain != null:
+				land = battle.terrain.push_out(land,7)
 			battle.drop_weapon(s["weapon"], land)
 			battle.fx.snow_puff(land)
 		if not dead:
