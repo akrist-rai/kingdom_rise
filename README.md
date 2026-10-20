@@ -13,10 +13,10 @@ A playable Godot action / formation strategy game. This update rebuilds the supp
 ## Play
 
 1. Extract the complete folder.
-2. In **Godot 4.5.1 or newer**, choose **Import** and select `project.godot`.
+2. In **Godot 4.5.1 or newer** (this update was built and tested with 4.7.2), choose **Import** and select `project.godot`.
 3. Press **F5**. Enter or click on the title to start the siege. **M** opens the campaign atlas instead.
 
-This is the complete editable **Godot project**, not an Unreal project or a compiled Windows executable. Use the standard Godot build; .NET is not required. Troop sprite atlases, sound and music are generated locally at startup. The eight Chapter III environment paintings are bundled PNG assets. There are no external asset downloads.
+This is the complete editable **Godot project**, not an Unreal project or a compiled Windows executable. Use the standard Godot build; .NET is not required. Soldiers, horses, buildings, trees and siege engines are pre-rendered sprite sheets (`assets/units`, `assets/props`) baked from free CC0 3D models; effects, music and sound effects are free CC0 assets; fonts are OFL. Everything ships in the folder, so nothing is downloaded at runtime. See [CREDITS.md](CREDITS.md).
 
 ## What changed
 
@@ -31,6 +31,20 @@ This is the complete editable **Godot project**, not an Unreal project or a comp
 - **Minimal combat HUD**: compact vitals, a narrow army balance, one objective, a quiet command status and a weapon label. Detailed controls and the atlas appear only when requested. The title, pause menu, manual and promotion presentation are restyled.
 
 ![Command view](screenshots/command_view.png)
+
+## Visual and combat overhaul
+
+- **Real art instead of vector placeholders.** Soldiers are rendered from the KayKit 3D characters in five directions (west-facing ones mirrored) with walk, run, attack, block, dodge, hit, death and other animations. A separate weapon layer is drawn per loadout, and team cloth is recoloured per army by a shader. Cavalry come from a Quaternius horse with a rider pose. Buildings, trees, rocks and props are baked from the KayKit medieval and Quaternius nature packs, each with its own cast shadow.
+- **Dense, layered scenes.** Forest edges, lone oaks, rocks, camps and thousands of clutter tufts are drawn in batched chunks. All prop shadows merge into one ground shadow map. Trees and grass sway in the wind. The snow plains are re-dressed with snow-laden pines, dead trees, frosted brush and snow-capped boulders over new wind-sculpted snow. The siege wall, gatehouse and towers share one weathered-stone shader.
+- **Combat redesign.** Sizes and hitboxes match the new sprites, and HP is rebalanced per troop type. Attacks have readable wind-up, active and recovery frames, with swing trails that follow the weapon tip. There are hit flashes, impact stars, blood arcs and hit-stop. Deaths fall back, play out and leave corpses that are later stamped into the ground. Heavy hits trigger a radial zoom-blur impact frame.
+- **Dynamic camera.** A critically damped follow with look-ahead and aim pull. The camera frames the centre of the nearby fight and zooms with context: tighter in a duel, wider in a melee or a charge. Shake uses trauma with noise, plus spring kicks, zoom punches and roll.
+- **Minimal HUD.** Vitals bottom left fade when calm. Weapon and skill sit bottom right. Objective and army balance show only briefly after they change. Banners and alerts are understated.
+- **Sound.** Recorded sample banks with random variants and layered heavy hits replace the synthesised effects. Music crossfades between title, battle and boss tracks.
+- **Title screen.** A live diorama built from the same baked art: the March's columns wind up the road to Veyre in the golden hour under a slow camera push, with an editorial title and a minimal menu.
+
+![Title](screenshots/title.png)
+
+![The snow plains](screenshots/snow_plains.png)
 
 ## Formation choices
 
@@ -88,6 +102,9 @@ Tested with the actual Godot 4.5.1 runtime, including rendered title, battle, co
 - `scripts/ai/ai_brain.gd`: formation-aware marching and pursuit limits.
 - `scripts/combat/unit.gd`: directional protection, flank damage, advance attack bonus, movement and animation.
 - `scripts/world/siege.gd`: siege collision, route logic, machines and phases.
-- `scripts/world/golden_landscape.gd`, `medieval_props.gd`, `city_art.gd`, `shaders/harvest_ground.gdshader`: native vector environment and terrain.
+- `scripts/core/unit_art.gd`, `prop_art.gd`: load the baked soldier / prop sheets and their metadata.
+- `scripts/world/scenery.gd`: places baked props, clutter chunks and the merged ground shadow map.
+- `tools/bake_units.gd`, `bake_cavalry.gd`, `bake_props.gd`, `bake_siege.gd`: re-render the sprite sheets from `art_src/` (run with `godot --path . --script res://tools/bake_units.gd`).
+- `scripts/world/golden_landscape.gd`, `medieval_props.gd`, `city_art.gd`, `shaders/harvest_ground.gdshader`: vector environment pieces still used by the city and Chapter III, and the siege terrain.
 - `scripts/core/art.gd`, `art_props.gd`: generated soldier and weapon atlases.
 - `scripts/ui/title.gd`, `hud.gd`: title, manual, compact HUD and tactical atlas.

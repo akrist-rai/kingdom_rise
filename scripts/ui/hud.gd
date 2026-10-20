@@ -87,11 +87,9 @@ static func seal_image(ids: Array, red: Color = Color("#b3202a"), ink: Color = C
 
 func _build_textures() -> void:
 	for i in RANK_SEAL.size():
-		var id: String = RANK_SEAL[i]
-		var ids := ["five", "qian"] if id == "five_qian" else [id]
-		seals[id] = seal_tex(ids, Color("#b3202a"), Color("#f7e9cf"), i + 3)
-	seals["qin"] = seal_tex(["qin"], Color("#b3202a"), Color("#ffd98a"), 11)
-	seals["zhao"] = seal_tex(["zhao"], Color("#3a3f9e"), Color("#e8ecff"), 12)
+		seals[RANK_SEAL[i]] = badge_tex(i, Color("#9e1c26"), Color("#e9c46a"), "rank")
+	seals["qin"] = badge_tex(0, Color("#9e1c26"), Color("#e9c46a"), "sun")
+	seals["zhao"] = badge_tex(0, Color("#25427e"), Color("#e8ecff"), "cross")
 	swash = ImageTexture.create_from_image(_brush_image(72, 26, 3))
 	var fi := Image.create(120, 40, false, Image.FORMAT_RGBA8)
 	for y in 40:
@@ -168,6 +166,85 @@ static func scale2x(src: Image) -> Image:
 			out.set_pixel(x * 2 + 1, y * 2 + 1, e3)
 	return out
 
+## A heraldic badge: a heater shield with a metal border; rank chevrons (one per rank, a star
+## over four, a crown for the general), or a house device ("sun" for the March, "cross" for
+## the Crown). Pixel-drawn, then smoothed with two Scale2x passes like the seals.
+static func badge_image(rank: int, field: Color, metal: Color, device: String) -> Image:
+	var w := 20
+	var h := 24
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var cx := (w - 1) * 0.5
+	var inside := func(x: int, y: int, inset: float) -> bool:
+		var hw := 9.5 - inset
+		if y < inset or y > h - 1 - inset * 0.6:
+			return false
+		if y > 11:
+			var k := (y - 11.0) / (h - 11.0 - inset * 0.6)
+			hw *= sqrt(maxf(0.0, 1.0 - k * k * k))
+		return absf(x - cx) <= hw
+	for y in h:
+		for x in w:
+			if inside.call(x, y, 0.0):
+				var c := metal.darkened(0.25)
+				if inside.call(x, y, 1.0):
+					c = metal
+				if inside.call(x, y, 2.0):
+					# the field, lit from the upper left
+					c = field.lightened(0.12) if x + y < 14 else field
+					if x > 12:
+						c = field.darkened(0.12)
+				img.set_pixel(x, y, c)
+	var put := func(x: int, y: int, c: Color) -> void:
+		if x >= 0 and y >= 0 and x < w and y < h and img.get_pixel(x, y).a > 0.0:
+			img.set_pixel(x, y, c)
+	match device:
+		"rank":
+			if rank >= 5:
+				# the general's crown
+				for x in range(5, 15):
+					put.call(x, 11, metal)
+					put.call(x, 12, metal)
+				for p in [5, 9, 10, 14]:
+					for y in range(7, 11):
+						put.call(p, y, metal)
+				put.call(5, 6, metal)
+				put.call(14, 6, metal)
+				put.call(9, 5, metal)
+				put.call(10, 5, metal)
+				for x in range(6, 14):
+					put.call(x, 14, metal.darkened(0.2))
+			else:
+				var n := mini(rank + 1, 4)
+				for i in n:
+					var y0 := 17 - i * 3
+					for d in 6:
+						put.call(int(cx) - d, y0 - 5 + d, metal)
+						put.call(int(cx) + 1 + d, y0 - 5 + d, metal)
+				if rank >= 4:
+					for p in [Vector2i(9, 3), Vector2i(10, 3), Vector2i(8, 4), Vector2i(11, 4), Vector2i(9, 4), Vector2i(10, 4), Vector2i(9, 5), Vector2i(10, 5)]:
+						put.call(p.x, p.y, metal)
+		"sun":
+			for y in h:
+				for x in w:
+					var d := Vector2(x - cx, y - 10.5).length()
+					if d < 3.2 or (d < 6.0 and int(round(atan2(y - 10.5, x - cx) / (PI / 4.0))) % 2 == 0 and d > 4.2):
+						put.call(x, y, metal)
+		"cross":
+			for y in range(4, 20):
+				put.call(9, y, metal)
+				put.call(10, y, metal)
+			for x in range(4, 16):
+				put.call(x, 9, metal)
+				put.call(x, 10, metal)
+	return img
+
+static func badge_tex(rank: int, field: Color, metal: Color, device: String) -> ImageTexture:
+	var img := badge_image(rank, field, metal, device)
+	var t := ImageTexture.create_from_image(scale2x(scale2x(img)))
+	t.set_size_override(Vector2i(img.get_width(), img.get_height()))
+	return t
+
 ## A seal texture: the pixel seal smoothed with two Scale2x passes; reports its 1x size.
 static func seal_tex(ids: Array, red: Color, ink: Color, seed: int) -> ImageTexture:
 	var img := seal_image(ids, red, ink, seed)
@@ -210,7 +287,7 @@ func screen_flash(a: float) -> void:
 	flash = maxf(flash, a)
 
 ## Manga speed lines converging on a screen point (used with impact frames).
-func speed_lines(screen_pos: Vector2, dur: float, col: Color = Color(0.02, 0.01, 0.03)) -> void:
+func speed_lines(screen_pos: Vector2, dur: float, col: Color = Color(1.0, 0.97, 0.9, 0.35)) -> void:
 	var seed := randi()
 	lines_fx.append({"p": screen_pos, "t": 0.0, "dur": dur, "seed": seed, "col": col})
 
@@ -227,19 +304,6 @@ func prompt(key: String, text: String) -> void:
 	prompt_key = key
 	prompt_text = text
 	prompt_t = 0.15
-
-func _draw_prompt() -> void:
-	if prompt_t <= 0.0 or battle.possess:
-		return
-	var w := Game.text_w(prompt_text, 7) + 26.0
-	var x := 320.0 - w * 0.5
-	var bossbar: bool = (battle.boss != null and is_instance_valid(battle.boss) and not battle.boss.dead) or battle.duel
-	var y := 264.0 if bossbar else 300.0
-	draw_rect(Rect2(x, y - 10, w, 15), Color(0.02, 0.05, 0.08, 0.55))
-	draw_rect(Rect2(x, y + 5, w, 1), Color(1.0, 0.82, 0.5, 0.8))
-	draw_rect(Rect2(x + 3, y - 8, 12, 11), Color(0.95, 0.9, 0.82))
-	Game.text(self, Vector2(x + 9, y + 1), prompt_key, 7, Color(0.05, 0.08, 0.1), 1, 0, false)
-	Game.text(self, Vector2(x + 21, y + 1), prompt_text, 7, Color(0.95, 0.92, 0.86), 0)
 
 ## The blade-lock tug of war: the marker moves toward whoever is winning.
 func _draw_clash() -> void:
@@ -553,12 +617,12 @@ func _draw_speed_lines() -> void:
 		for i in 46:
 			var a := rng.randf() * TAU
 			var r0 := rng.randf_range(70.0, 150.0) * (1.0 - k * 0.3)
-			var wdt := rng.randf_range(1.0, 4.0)
+			var wdt := rng.randf_range(0.3, 1.2)
 			var dir := Vector2.from_angle(a)
 			var p0 := c + dir * r0
 			var p1 := c + dir * 520.0
 			var n := dir.orthogonal() * wdt
-			draw_colored_polygon(PackedVector2Array([p0, p1 + n, p1 - n]), Color(col.r, col.g, col.b, 0.9 * (1.0 - k)))
+			draw_colored_polygon(PackedVector2Array([p0, p1 + n, p1 - n]), Color(col.r, col.g, col.b, col.a * (1.0 - k)))
 
 func _draw_slashes() -> void:
 	for sl in slashes:
@@ -569,35 +633,56 @@ func _draw_slashes() -> void:
 		var ln := 900.0 * grow
 		var th := 26.0 * (1.0 - k * 0.7)
 		draw_set_transform(c - d * 450.0 + d * ln * 0.5, d.angle(), Vector2.ONE)
-		draw_texture_rect(band, Rect2(Vector2(-ln * 0.5, -th * 0.5), Vector2(ln, th)), false, Color(C_INK.r, C_INK.g, C_INK.b, 0.9 * (1.0 - k)))
-		draw_rect(Rect2(Vector2(-ln * 0.5, -1.0), Vector2(ln, 2.0)), Color(0.95, 0.15, 0.12, 1.0 - k))
+		draw_texture_rect(band, Rect2(Vector2(-ln * 0.5, -th * 0.25), Vector2(ln, th * 0.5)), false, Color(1.0, 0.86, 0.6, 0.35 * (1.0 - k)))
+		draw_rect(Rect2(Vector2(-ln * 0.5, -1.0), Vector2(ln, 2.0)), Color(1.0, 0.55, 0.35, 0.8 * (1.0 - k)))
 		draw_rect(Rect2(Vector2(-ln * 0.45, -0.5), Vector2(ln * 0.9, 1.0)), Color(1, 0.95, 0.9, 1.0 - k))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 # ------------------------------------------------------------------ minimal cinematic HUD
-## A hairline bar: soft ink shadow, thin fill, a brighter leading edge and end ticks.
+## A hairline bar: soft ink shadow, thin fill, a brighter leading edge.
 func _line_bar(x: float, y: float, w: float, frac: float, col: Color, h: float = 2.0, a: float = 1.0, extra: float = 0.0, extra_col: Color = Color.WHITE) -> void:
 	var f := clampf(frac, 0.0, 1.0)
-	draw_rect(Rect2(x - 1.0, y - 1.0, w + 2.0, h + 2.0), Color(0.01, 0.03, 0.05, 0.45 * a))
-	draw_rect(Rect2(x, y, w, h), Color(1, 1, 1, 0.08 * a))
+	draw_rect(Rect2(x - 1.0, y - 1.0, w + 2.0, h + 2.0), Color(0.01, 0.02, 0.04, 0.5 * a))
+	draw_rect(Rect2(x, y, w, h), Color(1, 1, 1, 0.07 * a))
 	if extra > 0.0:
 		draw_rect(Rect2(x + w * f, y, w * clampf(extra, 0.0, 1.0 - f), h), Color(extra_col.r, extra_col.g, extra_col.b, extra_col.a * a))
 	draw_rect(Rect2(x, y, w * f, h), Color(col.r, col.g, col.b, a))
-	if f > 0.0:
-		draw_rect(Rect2(x + w * f - 1.0, y - 1.0, 1.0, h + 2.0), Color(1.0, 0.97, 0.9, 0.85 * a))
-	draw_rect(Rect2(x - 2.0, y - 1.0, 0.6, h + 2.0), Color(1, 1, 1, 0.35 * a))
-	draw_rect(Rect2(x + w + 1.4, y - 1.0, 0.6, h + 2.0), Color(1, 1, 1, 0.35 * a))
+	if f > 0.0 and f < 1.0:
+		draw_rect(Rect2(x + w * f - 0.6, y - 0.6, 0.8, h + 1.2), Color(1.0, 0.97, 0.9, 0.8 * a))
 
 func _ta(pos: Vector2, s: String, sz: int, col: Color, a: float, align: int = 0, kind: int = 0) -> void:
 	Game.text(self, pos, s, sz, Color(col.r, col.g, col.b, col.a * a), align, kind)
 
 var hud_a := 1.0
 var combat_t := 0.0
+var vit_a := 0.0
+var hp_chip := 1.0
+var hp_last := 1.0
+var chip_hold := 0.0
+var obj_last := ""
+var obj_t := 0.0
+var xp_last := 0.0
+var xp_t := 0.0
+var style_a := 0.0
+var prompt_a := 0.0
+
+func _objective_text() -> String:
+	var lc = battle.level_ctl
+	if lc == null:
+		return "BREAK THE ENEMY LINE"
+	match int(lc.phase):
+		1:
+			return "BREAK THE GATE"
+		2:
+			return "TAKE THE WARDS"
+	return "REACH THE KEEP"
 
 func _hud_alpha(rdt: float) -> void:
 	var p = battle.player
 	var fighting := false
+	var hurt := false
 	if p != null and is_instance_valid(p) and not p.dead:
+		hurt = p.hp < p.max_hp * 0.98 or p.stamina < p.max_stamina * 0.98
 		if p.state == Unit.St.ATTACK or p.hp < p.max_hp * 0.5 or Game.aura_active() or battle.duel:
 			fighting = true
 		else:
@@ -605,112 +690,177 @@ func _hud_alpha(rdt: float) -> void:
 				if e.faction != p.faction and not e.dead and not e.spectator:
 					fighting = true
 					break
+		var f: float = clampf(p.hp / p.max_hp, 0.0, 1.0)
+		if f < hp_last - 0.001:
+			chip_hold = 0.5
+		hp_last = f
+		chip_hold -= rdt
+		if f >= hp_chip:
+			hp_chip = f
+		elif chip_hold <= 0.0:
+			hp_chip = move_toward(hp_chip, f, rdt * 0.7)
 	if fighting:
-		combat_t = 4.0
+		combat_t = 3.0
 	combat_t -= rdt
-	hud_a = move_toward(hud_a, 1.0 if combat_t > 0.0 else 0.38, rdt * (4.0 if combat_t > 0.0 else 0.8))
+	hud_a = move_toward(hud_a, 1.0 if combat_t > 0.0 else 0.0, rdt * (5.0 if combat_t > 0.0 else 0.7))
+	vit_a = move_toward(vit_a, 1.0 if (combat_t > 0.0 or hurt) else 0.22, rdt * (5.0 if combat_t > 0.0 else 0.8))
+	var obj := _objective_text()
+	if obj != obj_last:
+		obj_last = obj
+		obj_t = 6.5
+	obj_t -= rdt
+	if Game.xp != xp_last:
+		xp_last = Game.xp
+		xp_t = 2.2
+	xp_t -= rdt
+	style_a = move_toward(style_a, 1.0 if Game.style > 70.0 else 0.0, rdt * 3.0)
+	prompt_a = move_toward(prompt_a, 1.0 if prompt_t > 0.0 else 0.0, rdt * 8.0)
 
+## Vitals: slim bars at the lower left. The white chip trails damage; they sink back when calm.
 func _draw_player() -> void:
 	var p = battle.player
 	if p == null or not is_instance_valid(p) or p.dead:
 		return
-	var a = maxf(0.8, hud_a)
-	var ink = Color(0.08, 0.17, 0.17, 0.75)
-	# One quiet corner: health, stamina, spirit and recovery supplies.
-	draw_style_box(_minimal_plate(Color(0.08,0.15,0.15,0.80)), Rect2(14,303,162,43))
-	_ta(Vector2(24,315), p.uname, 6, C_TEXT, a)
-	_ta(Vector2(165,315), str(int(ceil(p.hp))), 5, C_TEXT, a, 2)
-	_line_bar(24,321,141,p.hp/p.max_hp,Color("#d88667"),2.4,a)
-	_line_bar(24,327,102,p.stamina/p.max_stamina,Color("#c5ce9a"),1.1,a)
-	_line_bar(24,332,65,p.spirit/Unit.MAX_SPIRIT,Color("#8cbfc2"),1.0,a)
+	var a := vit_a
+	var x := 22.0
+	var y := 336.0
+	var w := 132.0
+	var f: float = clampf(p.hp / p.max_hp, 0.0, 1.0)
+	var low := f < 0.3
+	var pulse := (0.5 + 0.5 * sin(t * 9.0)) if low else 0.0
+	draw_rect(Rect2(x - 1.5, y - 1.5, w + 3.0, 6.0), Color(0.01, 0.02, 0.04, 0.6 * a))
+	draw_rect(Rect2(x, y, w, 3.0), Color(1, 1, 1, 0.06 * a))
+	draw_rect(Rect2(x, y, w * clampf(hp_chip, 0.0, 1.0), 3.0), Color(1.0, 0.94, 0.86, 0.85 * a))
+	if p.rally > 0.0:
+		draw_rect(Rect2(x + w * f, y, w * clampf(p.rally / p.max_hp, 0.0, 1.0 - f), 3.0), Color(1.0, 0.62, 0.25, 0.7 * a))
+	var hc := Color("#e5553f").lerp(Color("#ff2a2a"), pulse * 0.6)
+	draw_rect(Rect2(x, y, w * f, 3.0), Color(hc.r, hc.g, hc.b, a))
+	draw_rect(Rect2(x, y, w * f, 1.0), Color(1.0, 0.75, 0.62, 0.55 * a))
+	# stamina (grey-gold) and spirit (five beads)
+	var sf: float = clampf(p.stamina / p.max_stamina, 0.0, 1.0)
+	var sc := Color("#e8d9a6") if p.stamina > 0.0 else Color("#ff5a4a")
+	draw_rect(Rect2(x - 1.0, y + 5.0, w * 0.72 + 2.0, 3.0), Color(0.01, 0.02, 0.04, 0.5 * a))
+	draw_rect(Rect2(x, y + 6.0, w * 0.72 * sf, 1.2), Color(sc.r, sc.g, sc.b, 0.9 * a))
+	var sp: float = p.spirit / Unit.MAX_SPIRIT
+	var ready_skill: bool = p.spirit >= p.weapon.skill_cost
+	for i in 5:
+		var c := Vector2(x + 2.0 + i * 6.0, y - 6.0)
+		var fill := clampf(sp * 5.0 - i, 0.0, 1.0)
+		var dia := PackedVector2Array([c + Vector2(0, -2), c + Vector2(2, 0), c + Vector2(0, 2), c + Vector2(-2, 0)])
+		draw_colored_polygon(dia, Color(0.02, 0.03, 0.05, 0.6 * a))
+		if fill > 0.05:
+			var dc := Color("#9fd8ff") if not ready_skill else Color("#fff1b8")
+			draw_colored_polygon(PackedVector2Array([c + Vector2(0, -1.4 * fill), c + Vector2(1.4 * fill, 0), c + Vector2(0, 1.4 * fill), c + Vector2(-1.4 * fill, 0)]), Color(dc.r, dc.g, dc.b, a))
+	# flasks
 	for i in p.max_flasks:
-		draw_circle(Vector2(140+i*7,332),1.6,Color("#e4c98c") if i<p.flasks else Color(0.6,0.6,0.5,0.4))
+		var c := Vector2(x + w + 8.0 + i * 6.0, y + 1.5)
+		draw_circle(c, 2.0, Color(0.02, 0.03, 0.05, 0.6 * a))
+		draw_circle(c, 1.3, Color("#ff8a5c") if i < p.flasks else Color(0.4, 0.38, 0.36, 0.5), true)
 	if Game.aura_ready():
-		_ta(Vector2(24,341), "X / AURA READY",5,C_GOLD,1.0)
+		_ta(Vector2(x + 36.0, y - 3.0), "X  AURA", 5, C_GOLD, 0.6 + 0.4 * sin(t * 5.0))
 	elif Game.aura_active():
-		_line_bar(24,339,141,Game.aura_t/Game.AURA_DUR,C_GOLD,1.4)
-	else:
-		_ta(Vector2(165,341), "R / HEAL",4,C_DIM,a,2)
-	# Weapon information stays in a single line, with only the relevant skill beneath it.
-	_ta(Vector2(623,330),p.weapon.display_name(),6,C_TEXT,a,2)
-	var ready_skill = p.spirit >= p.weapon.skill_cost
-	_ta(Vector2(623,342),"E / "+p.weapon.skill_name,5,Color("#c2e0db") if ready_skill else C_DIM,a,2)
-	if p.weapon.clip>0:
-		_ta(Vector2(623,318),"RELOADING" if p.reload_t>0 else "%d / %d" % [p.ammo,p.weapon.clip],5,C_DIM,a,2)
+		_line_bar(x, y + 10.0, w, Game.aura_t / Game.AURA_DUR, C_GOLD, 1.0, a)
+	# weapon and skill, lower right
+	var wa := maxf(vit_a, 0.3)
+	_ta(Vector2(618, 340), p.weapon.display_name(), 6, C_TEXT, wa * 0.85, 2)
+	var sk_col := Color("#fff1b8") if ready_skill else C_DIM
+	_ta(Vector2(618, 349), "E  " + p.weapon.skill_name, 5, sk_col, wa * (1.0 if ready_skill else 0.6), 2)
+	if p.weapon.clip > 0:
+		_ta(Vector2(618, 331), "RELOADING" if p.reload_t > 0 else "%d / %d" % [p.ammo, p.weapon.clip], 5, C_DIM, wa, 2)
 
+## Rank progress as a hairline along the top edge (lit when you earn XP); the style rank
+## appears at the right only while you are fighting with style.
 func _draw_rank_style() -> void:
-	_ta(Vector2(18,20),"GOLDEN MARCH",6,C_TEXT,0.95)
-	_ta(Vector2(18,31),Game.rank_name(),4,C_DIM,0.9)
-	_line_bar(18,36,72,Game.rank_progress(),C_GOLD,0.8,0.75)
-	if Game.chain_hits >= 3:
-		_ta(Vector2(620,62),"%d HITS" % Game.chain_hits,6,C_TEXT,1.0,2)
-	if Game.style>90:
-		var td=Game.STYLE_TIERS[Game.style_tier()]
-		_ta(Vector2(620,73),td["n"]+" / "+td["name"],5,C_GOLD,0.9,2)
+	var xa := clampf(xp_t, 0.0, 1.0)
+	if xa > 0.0 or Game.command_view:
+		var aa := maxf(xa, 0.5 if Game.command_view else 0.0)
+		draw_rect(Rect2(0, 0, 640, 1.0), Color(0, 0, 0, 0.35 * aa))
+		draw_rect(Rect2(0, 0, 640 * Game.rank_progress(), 1.0), Color(C_GOLD.r, C_GOLD.g, C_GOLD.b, 0.9 * aa))
+		_ta(Vector2(320, 12), Game.rank_name(), 5, C_GOLD, aa * 0.9, 1, 1)
+	if style_a > 0.01:
+		var td: Dictionary = Game.STYLE_TIERS[Game.style_tier()]
+		var col: Color = td["col"]
+		var x := 616.0
+		var y := 128.0
+		_ta(Vector2(x, y), td["n"], 16, col, style_a, 2, 1)
+		_ta(Vector2(x, y + 12.0), td["name"], 5, C_TEXT, style_a * 0.85, 2)
+		_line_bar(x - 54.0, y + 16.0, 54.0, Game.style_frac(), col, 1.0, style_a)
+		if Game.chain_hits >= 3:
+			var s := 1.0 + chain_pop * 0.25
+			_ta(Vector2(x, y + 30.0), "%d HITS" % Game.chain_hits, int(6 * s), C_TEXT, style_a, 2)
 
+## The objective, when it changes (or in command view): a quiet line at the top with the
+## balance of the two armies under it.
 func _draw_battle_bar() -> void:
-	var a = battle.army_strength(0)
-	var e = battle.army_strength(1)
-	var frac = a / maxf(1,a+e)
-	draw_rect(Rect2(235,16,170,2),Color("#416d73"))
-	draw_rect(Rect2(235,16,170*frac,2),Color("#cb7456"))
-	draw_line(Vector2(235+170*frac,13),Vector2(235+170*frac,21),C_TEXT,0.7)
-	_ta(Vector2(225,19),str(int(a)),5,C_TEXT,0.85,2)
-	_ta(Vector2(415,19),str(int(e)),5,C_TEXT,0.85)
-	var obj = "BREAK THE GATE" if battle.level_ctl != null and battle.level_ctl.phase==1 else "TAKE THE WARDS" if battle.level_ctl != null and battle.level_ctl.phase==2 else "REACH THE KEEP" if battle.level_ctl != null else "BREAK THE ENEMY LINE"
-	_ta(Vector2(320,32),obj,5,C_TEXT,0.9,1)
-	if battle.tactics != null:
+	var a := clampf(obj_t / 0.8, 0.0, 1.0) * clampf(obj_t, 0.0, 1.0)
+	if Game.command_view:
+		a = 1.0
+	if a <= 0.01:
+		return
+	var y := 26.0
+	var obj := obj_last
+	var w := Game.text_w(obj, 7, 1)
+	_rule_pair(Vector2(320, y - 4.0), w * 0.5 + 10.0, 40.0, Color(C_GOLD.r, C_GOLD.g, C_GOLD.b, 0.6 * a))
+	_ta(Vector2(320, y), obj, 7, C_TEXT, a, 1, 1)
+	var al: float = battle.army_strength(0)
+	var en: float = battle.army_strength(1)
+	var frac := al / maxf(1.0, al + en)
+	var bw := 150.0
+	var bx := 320.0 - bw * 0.5
+	draw_rect(Rect2(bx, y + 7.0, bw, 1.5), Color(Color("#3f78a3"), 0.85 * a))
+	draw_rect(Rect2(bx, y + 7.0, bw * frac, 1.5), Color(Color("#d9573f"), 0.95 * a))
+	draw_rect(Rect2(bx + bw * frac - 0.5, y + 5.0, 1.0, 5.5), Color(1, 1, 1, 0.9 * a))
+	if battle.tactics != null and Game.command_view:
 		for i in battle.tactics.objectives.size():
-			var ob=battle.tactics.objectives[i]
-			var c=Vector2(303+i*17,42)
-			var col=Color("#e2b878") if ob["owner"]==0 else Color("#73aaae") if ob["owner"]==1 else Color(0.9,0.86,0.69,0.45)
-			draw_polyline(PackedVector2Array([c+Vector2(0,-2.5),c+Vector2(2.5,0),c+Vector2(0,2.5),c+Vector2(-2.5,0),c+Vector2(0,-2.5)]),col,1.0,true)
-	_ta(Vector2(620,19),"TAB / COMMAND",5,C_TEXT,0.85,2)
-	_ta(Vector2(620,30),"MORALE %d" % int(battle.morale[0]),4,C_DIM,0.85,2)
+			var ob = battle.tactics.objectives[i]
+			var c := Vector2(303 + i * 17, y + 19.0)
+			var col := Color("#e2b878") if ob["owner"] == 0 else Color("#73aaae") if ob["owner"] == 1 else Color(0.9, 0.86, 0.69, 0.45)
+			draw_polyline(PackedVector2Array([c + Vector2(0, -2.5), c + Vector2(2.5, 0), c + Vector2(0, 2.5), c + Vector2(-2.5, 0), c + Vector2(0, -2.5)]), col, 1.0, true)
+		_ta(Vector2(620, 20), "MORALE %d" % int(battle.morale[0]), 5, C_DIM, 0.9, 2)
 
 func _draw_boss() -> void:
 	var b = battle.duel_foe if (battle.duel and battle.duel_foe != null and is_instance_valid(battle.duel_foe)) else battle.boss
 	if b == null or not is_instance_valid(b) or b.dead:
 		return
-	var y := 288.0
-	var w := 300.0
+	var y := 330.0
+	var w := 260.0
 	var x := 320.0 - w * 0.5
-	var title := "WARDEN OF VEYRE" if b.is_boss else "1000-MAN COMMANDER"
-	Game.text(self, Vector2(320, y - 5), b.uname, 9, Color("#f0e2ff"), 1, 1)
-	_ta(Vector2(320, y + 15), title, 5, C_DIM, 1.0, 1)
-	_line_bar(x, y, w, b.hp / b.max_hp, Color("#b8323c"), 2.5)
-	_line_bar(x + 40.0, y + 5.0, w - 80.0, b.stance / b.max_stance, Color("#ffd23f"), 1.0)
+	var title := "WARDEN OF VEYRE" if b.is_boss else "CROWN COMMANDER"
+	_ta(Vector2(320, y - 6.0), b.uname, 8, Color("#f3e6ff"), 1.0, 1, 1)
+	_ta(Vector2(320, y + 14.0), title, 4, C_DIM, 0.9, 1)
+	_line_bar(x, y, w, b.hp / b.max_hp, Color("#c4313c"), 2.5)
+	_line_bar(x + 50.0, y + 5.0, w - 100.0, b.stance / b.max_stance, Color("#ffd23f"), 1.0)
 	if b.is_boss:
 		for i in 2:
 			var px := x + w * (0.6 if i == 0 else 0.3)
 			draw_rect(Rect2(px, y - 2, 0.8, 6.5), Color(1, 0.9, 0.7, 0.7))
 
 func _draw_command() -> void:
-	var d=battle.tactics
-	if d==null or battle.duel:
+	var d = battle.tactics
+	if d == null or battle.duel or not Game.command_view:
 		return
-	var col=C_GOLD if Game.command_view else C_TEXT
-	var label="%d / %s / %s" % [battle.squad.size(), d.FORMS[d.formation],str(battle.squad_order).to_upper()]
-	_ta(Vector2(320,337),label,5,col,0.95,1)
-	if not Game.command_view:
-		_ta(Vector2(320,347),"1 FOLLOW   2 ADVANCE   3 HOLD   Q FORMATION",4,C_DIM,0.75,1)
-		return
-	draw_style_box(_minimal_plate(Color(0.08,0.16,0.16,0.94)),Rect2(182,267,276,56))
+	var col := C_GOLD
+	var label := "%d / %s / %s" % [battle.squad.size(), d.FORMS[d.formation], str(battle.squad_order).to_upper()]
+	_ta(Vector2(320, 337), label, 5, col, 0.95, 1)
+	draw_style_box(_minimal_plate(Color(0.06, 0.1, 0.12, 0.9)), Rect2(182, 267, 276, 56))
 	for i in 3:
-		var c=Vector2(226+i*94,287)
-		var color=C_GOLD if i==d.formation else C_DIM
-		if i==d.formation:
-			draw_line(c+Vector2(-34,31),c+Vector2(34,31),C_GOLD,1.0)
+		var c := Vector2(226 + i * 94, 287)
+		var color := C_GOLD if i == d.formation else C_DIM
+		if i == d.formation:
+			draw_line(c + Vector2(-34, 31), c + Vector2(34, 31), C_GOLD, 1.0)
 		for j in 9:
-			var pt=Vector2.ZERO
-			if i==0: pt=Vector2((j%5-2)*6,(j/5)*7-5)
-			elif i==1: pt=Vector2((j%2*2-1)*ceilf(j/2.0)*4,ceilf(j/2.0)*4-8)
-			else: pt=Vector2((j%3-1)*6,(j/3-1)*6)
-			draw_circle(c+pt,1.4,color)
-		_ta(c+Vector2(0,21),str(4+i)+" / "+d.FORMS[i],5,color,1.0,1)
-	_ta(Vector2(320,253),"COMMAND / 16% SPEED",7,C_GOLD,1.0,1)
-	_ta(Vector2(320,263),["FRONTAL PROTECTION", "ADVANCE ATTACK BONUS", "STRONG FRONTAL DEFENCE"][d.formation],4,C_TEXT,0.9,1)
-	_ta(Vector2(320,60),"RIGHT CLICK / PLACE FORMATION     WASD / PAN     TAB / RETURN",5,C_TEXT,1.0,1)
+			var pt := Vector2.ZERO
+			if i == 0:
+				pt = Vector2((j % 5 - 2) * 6, (j / 5) * 7 - 5)
+			elif i == 1:
+				pt = Vector2((j % 2 * 2 - 1) * ceilf(j / 2.0) * 4, ceilf(j / 2.0) * 4 - 8)
+			else:
+				pt = Vector2((j % 3 - 1) * 6, (j / 3 - 1) * 6)
+			draw_circle(c + pt, 1.4, color)
+		_ta(c + Vector2(0, 21), str(4 + i) + " / " + d.FORMS[i], 5, color, 1.0, 1)
+	_ta(Vector2(320, 253), "COMMAND  /  TIME SLOWED", 7, C_GOLD, 1.0, 1, 1)
+	_ta(Vector2(320, 263), ["FRONTAL PROTECTION", "ADVANCE ATTACK BONUS", "STRONG FRONTAL DEFENCE"][d.formation], 4, C_TEXT, 0.9, 1)
+	_ta(Vector2(320, 52), "RIGHT CLICK  PLACE FORMATION     WASD  PAN     1 / 2 / 3  ORDERS     TAB  RETURN", 5, C_TEXT, 1.0, 1)
 	_draw_tactical_map()
 
 func _draw_markers() -> void:
@@ -726,7 +876,7 @@ func _draw_markers() -> void:
 	for tg in targets:
 		var wp: Vector2 = tg[0] if tg[0] is Vector2 else tg[0].global_position
 		var sp: Vector2 = cam.world_to_screen(wp)
-		var inner := Rect2(Vector2(18, 44), Game.VIEW - Vector2(36, 104))
+		var inner := Rect2(Vector2(24, 40), Game.VIEW - Vector2(48, 96))
 		if inner.has_point(sp):
 			continue
 		var c := Game.VIEW * 0.5
@@ -738,29 +888,42 @@ func _draw_markers() -> void:
 			k = minf(k, (inner.size.y * 0.5) / absf(dir.y))
 		var ep := c + dir * k
 		var col: Color = tg[1]
-		var pulse := 1.0 + 0.2 * sin(t * 6.0)
-		draw_colored_polygon(PackedVector2Array([ep + dir * 6.0 * pulse, ep + dir.orthogonal() * 3.0, ep - dir.orthogonal() * 3.0]), col)
+		var pulse := 0.75 + 0.25 * sin(t * 4.0)
+		var n := dir.orthogonal()
+		draw_colored_polygon(PackedVector2Array([ep + dir * 5.0, ep + n * 2.6 - dir * 1.0, ep - n * 2.6 - dir * 1.0]), Color(col.r, col.g, col.b, 0.8 * pulse))
 		var dist := int(wp.distance_to(cam.get_screen_center_position()) / 10.0)
-		var lp := ep - dir * 10.0 + Vector2(0, 2)
+		var lp := ep - dir * 11.0 + Vector2(0, 2)
 		lp.x = clampf(lp.x, 44.0, 596.0)
-		_ta(lp, "%s  %dM" % [tg[2], dist], 5, col, 1.0, 1)
+		_ta(lp, "%s  %d" % [tg[2], dist], 4, col, 0.75, 1)
 
 func _draw_alerts() -> void:
 	if alerts.is_empty() or Game.command_view:
 		return
-	var al=alerts[-1]
-	var a=clampf(3.2-float(al["t"]),0,1)
-	var text=str(al["s"])
-	var size=5
-	while Game.text_w(text,size)>550 and size>3:
-		size-=1
-	_ta(Vector2(320,299),text,size,C_TEXT,a,1)
+	var al = alerts[-1]
+	var a := clampf(3.2 - float(al["t"]), 0.0, 1.0) * clampf(float(al["t"]) / 0.15, 0.0, 1.0)
+	var text := str(al["s"])
+	var size := 5
+	while Game.text_w(text, size) > 420 and size > 3:
+		size -= 1
+	var w := Game.text_w(text, size) + 30.0
+	_soft_band_w(316.0, w, 11.0, 0.45 * a)
+	var col: Color = al["col"]
+	_ta(Vector2(320, 319), text, size, col.lerp(C_TEXT, 0.35), a, 1)
+
+func _soft_band_w(cy: float, w: float, h: float, a: float) -> void:
+	var c0 := Color(0.01, 0.02, 0.04, 0.0)
+	var c1 := Color(0.01, 0.02, 0.04, a)
+	var x0 := 320.0 - w * 0.5
+	var x1 := 320.0 + w * 0.5
+	draw_polygon(PackedVector2Array([Vector2(x0 - 30, cy - h * 0.5), Vector2(x0, cy - h * 0.5), Vector2(x1, cy - h * 0.5), Vector2(x1 + 30, cy - h * 0.5),
+		Vector2(x1 + 30, cy + h * 0.5), Vector2(x1, cy + h * 0.5), Vector2(x0, cy + h * 0.5), Vector2(x0 - 30, cy + h * 0.5)]),
+		PackedColorArray([c0, c1, c1, c0, c0, c1, c1, c0]))
 
 func _rule_pair(c: Vector2, gap: float, len: float, col: Color) -> void:
-	draw_rect(Rect2(c.x - gap - len, c.y, len, 0.8), col)
-	draw_rect(Rect2(c.x + gap, c.y, len, 0.8), col)
-	draw_rect(Rect2(c.x - gap - 2.0, c.y - 1.0, 2.0, 2.8), col)
-	draw_rect(Rect2(c.x + gap, c.y - 1.0, 2.0, 2.8), col)
+	draw_rect(Rect2(c.x - gap - len, c.y, len, 0.6), col)
+	draw_rect(Rect2(c.x + gap, c.y, len, 0.6), col)
+	draw_rect(Rect2(c.x - gap - 1.5, c.y - 0.8, 1.5, 2.2), col)
+	draw_rect(Rect2(c.x + gap, c.y - 0.8, 1.5, 2.2), col)
 
 ## A soft, horizontal ink band (dark in the middle, fading at both ends and edges).
 func _soft_band(cy: float, h: float, a: float) -> void:
@@ -773,56 +936,94 @@ func _soft_band(cy: float, h: float, a: float) -> void:
 			PackedColorArray([c0, c1, c0, c0, c0, c0]))
 
 func _draw_hints() -> void:
-	if help_on:
+	if help_on or Game.command_view or help_t <= 0.0:
 		return
-	elif help_t>0 and not Game.command_view:
-		_ta(Vector2(320,281),"WASD MOVE   /   CLICK ATTACK   /   SPACE DASH   /   H CONTROLS",5,C_TEXT,clampf(help_t,0,1)*0.85,1)
+	var a := clampf(help_t, 0.0, 1.0) * clampf((9.0 - help_t) / 1.0, 0.0, 1.0) * 0.75
+	_ta(Vector2(320, 300), "WASD  MOVE      CLICK  ATTACK      RIGHT CLICK  HEAVY      SPACE  DASH      SHIFT  GUARD      H  CONTROLS", 4, C_TEXT, a, 1)
+
+## Context prompt (pick up, mount, challenge) floating over your soldier.
+func _draw_prompt() -> void:
+	if prompt_a <= 0.01 or battle.possess or battle.player == null or not is_instance_valid(battle.player):
+		return
+	var sp: Vector2 = _to_screen(battle.player.global_position + Vector2(0, -44))
+	var a := prompt_a
+	var w := Game.text_w(prompt_text, 5) + 18.0
+	var x := sp.x - w * 0.5
+	var y := sp.y - 6.0
+	draw_rect(Rect2(x, y - 6, w, 10), Color(0.02, 0.03, 0.05, 0.6 * a))
+	draw_rect(Rect2(x + 2, y - 5, 9, 8), Color(0.96, 0.9, 0.78, a))
+	Game.text(self, Vector2(x + 6.5, y + 1.5), prompt_key, 5, Color(0.05, 0.06, 0.08, a), 1, 0, false)
+	_ta(Vector2(x + 14, y + 1.5), prompt_text, 5, C_TEXT, a)
 
 func _draw_help_panel() -> void:
-	draw_rect(Rect2(Vector2.ZERO,Game.VIEW),Color(0.05,0.12,0.12,0.76))
-	draw_style_box(_minimal_plate(Color(0.08,0.16,0.16,0.97)),Rect2(48,37,544,285))
-	_ta(Vector2(70,60),"FIELD MANUAL",10,C_GOLD,1.0)
-	_ta(Vector2(571,60),"H / CLOSE",5,C_DIM,1.0,2)
+	draw_rect(Rect2(Vector2.ZERO, Game.VIEW), Color(0.02, 0.04, 0.06, 0.8))
+	_ta(Vector2(320, 46), "FIELD MANUAL", 12, C_GOLD, 1.0, 1, 1)
+	_rule_pair(Vector2(320, 54), 70.0, 60.0, Color(C_GOLD.r, C_GOLD.g, C_GOLD.b, 0.6))
 	var rows = [
-		["WASD", "Move; pan the camera in command view"],
-		["TAB", "Command view: time slows to 16%"],
-		["RIGHT CLICK IN COMMAND", "Place the selected formation at the cursor"],
-		["1 / 2 / 3", "Follow / advance to cursor / hold position"],
-		["Q / 4 / 5 / 6", "Cycle formation / line / wedge / square"],
-		["SCROLL / F6", "Combat zoom / standard, war, epic army density"],
-		["LEFT / RIGHT MOUSE", "Light / heavy attack; hold heavy to charge"],
+		["WASD", "Move  /  pan the camera in command view"],
+		["LEFT / RIGHT MOUSE", "Light attack  /  heavy attack (hold to charge)"],
 		["LIGHT, LIGHT, HEAVY", "Weapon finisher"],
-		["SPACE / SHIFT", "Dash / guard; tap guard to parry"],
-		["E / R", "Weapon skill / heal with a flask"],
-		["F / C / T", "Interact, mount or duel / kick / throw weapon"],
-		["X / G / V", "Aura / war cry / arrow volley (rank unlocks)"],
-		["BACKSPACE", "Cycle allies during possession; Enter to choose"],
-		["ESC / F2 / F11", "Pause / low graphics / fullscreen"]]
+		["SPACE", "Dash (invincible for an instant)"],
+		["SHIFT", "Guard  /  tap just before a blow lands to parry"],
+		["E  /  R", "Weapon skill (spends spirit)  /  drink a flask"],
+		["F  /  C  /  T", "Interact, mount or duel  /  kick  /  throw your weapon"],
+		["X  /  G  /  V", "General's aura  /  war cry  /  arrow volley (rank unlocks)"],
+		["TAB", "Command view: time slows, right click places your formation"],
+		["1 / 2 / 3", "Follow  /  advance to cursor  /  hold position"],
+		["Q  /  4 / 5 / 6", "Cycle formation  /  line, wedge, square"],
+		["SCROLL  /  F6", "Combat zoom  /  army density"],
+		["BACKSPACE", "Choose another soldier after you fall (Enter takes him)"],
+		["ESC  /  F2  /  F11", "Pause  /  low graphics  /  fullscreen"]]
 	for i in rows.size():
-		var y=84+i*16
-		_ta(Vector2(70,y),rows[i][0],5,C_GOLD,1.0)
-		Game.text(self,Vector2(251,y),rows[i][1],5,C_TEXT,0,2,false)
+		var y := 80 + i * 17
+		_ta(Vector2(300, y), rows[i][0], 5, C_GOLD, 1.0, 2)
+		Game.text(self, Vector2(316, y), rows[i][1], 5, C_TEXT, 0, 2, false)
+	_ta(Vector2(320, 334), "H  CLOSE", 5, C_DIM, 1.0, 1)
 
+## Title cards: Cinzel caps between two hairlines, easing in and drifting up.
 func _draw_banner() -> void:
 	if banners.is_empty() or Game.command_view:
 		return
-	var b=banners[0]
-	var bt=float(b["t"])
-	var a=clampf(bt/0.4,0,1)*clampf((float(b["dur"])-bt)/0.6,0,1)
-	var title=str(b["title"])
-	var sz=12 if b["big"] else 9
-	while Game.text_w(title,sz,1)>520 and sz>6:
-		sz-=1
-	Game.text(self,Vector2(320,88),title,sz,Color(C_TEXT,a),1,1)
-	if b["big"]:
-		_ta(Vector2(320,101),str(b["sub"]),4,C_TEXT,a*0.85,1)
+	var b = banners[0]
+	var bt := float(b["t"])
+	var dur := float(b["dur"])
+	var a := clampf(bt / 0.5, 0.0, 1.0) * clampf((dur - bt) / 0.7, 0.0, 1.0)
+	var title := str(b["title"])
+	var big: bool = b["big"]
+	var sz := 15 if big else 10
+	while Game.text_w(title, sz, 1) > 540 and sz > 6:
+		sz -= 1
+	var rise := (1.0 - clampf(bt / 0.6, 0.0, 1.0)) * 6.0
+	var y := 92.0 + rise
+	var tw := Game.text_w(title, sz, 1)
+	if big:
+		_soft_band(y - 5.0, 46.0, 0.35 * a)
+	var col: Color = b["col"]
+	_rule_pair(Vector2(320, y - Game.text_size(sz, 1) * 0.42), tw * 0.5 + 14.0, 46.0 * a, Color(col.r, col.g, col.b, 0.7 * a))
+	Game.text(self, Vector2(320, y), title, sz, Color(C_TEXT.r, C_TEXT.g, C_TEXT.b, a), 1, 1)
+	if str(b["sub"]) != "":
+		_ta(Vector2(320, y + 13.0), str(b["sub"]), 4 if big else 4, col.lerp(C_TEXT, 0.5), a * 0.9, 1)
 
 func _draw_stamp() -> void:
 	if stamp.is_empty():
 		return
-	var a=clampf(float(stamp["t"])/0.25,0,1)*clampf((float(stamp["dur"])-float(stamp["t"]))/0.5,0,1)
-	_ta(Vector2(320,115),"A NEW BANNER RISES",6,C_GOLD,a,1)
-	_ta(Vector2(320,132),Game.rank_name(),12,C_TEXT,a,1)
+	# the new rank's badge drops in over the promotion banner (which carries the words)
+	var st: float = stamp["t"]
+	var a := clampf(st / 0.12, 0.0, 1.0) * clampf((float(stamp["dur"]) - st) / 0.5, 0.0, 1.0)
+	var tx: Texture2D = seals.get(stamp["id"])
+	if tx == null:
+		return
+	var k := clampf(st / 0.22, 0.0, 1.0)
+	var sc := lerpf(3.4, 1.6, 1.0 - (1.0 - k) * (1.0 - k)) + sin(minf(st, 0.5) * TAU * 2.0) * 0.08 * (1.0 - k)
+	var sz := tx.get_size() * sc
+	var c := Vector2(320, 150)
+	draw_texture_rect(tx, Rect2(c - sz * 0.5 + Vector2(1.5, 2.0), sz), false, Color(0, 0, 0, 0.45 * a))
+	draw_texture_rect(tx, Rect2(c - sz * 0.5, sz), false, Color(1, 1, 1, a))
+	# a glint sweeping across once it lands
+	var g := clampf((st - 0.3) / 0.35, 0.0, 1.0)
+	if g > 0.0 and g < 1.0:
+		var gx := c.x - sz.x * 0.5 + sz.x * g
+		draw_line(Vector2(gx - 3.0, c.y - sz.y * 0.45), Vector2(gx + 3.0, c.y + sz.y * 0.45), Color(1.0, 0.97, 0.85, 0.7 * a * sin(g * PI)), 1.6)
 
 func _draw_cutin() -> void:
 	var ct: float = cut["t"]
@@ -926,7 +1127,11 @@ func _draw_perks() -> void:
 		_seal(sid, Vector2(r.get_center().x - 10, r.position.y + 10), 1.0, 0.9)
 		_t(Vector2(r.position.x + 8, r.position.y + 16), "%d" % (i + 1), 8, C_DIM)
 		var nm: String = pd["name"]
-		_tt(Vector2(r.get_center().x, r.position.y + 50), nm, C_GOLD, 1, 1)
+		# long names step down a size so they stay inside the card
+		var fsz := 9
+		while Game.text_w(nm, fsz, 1) > r.size.x - 14.0 and fsz > 5:
+			fsz -= 1
+		Game.text(self, Vector2(r.get_center().x, r.position.y + 50), nm, fsz, C_GOLD, 1, 1)
 		_lines(Vector2(r.get_center().x, r.position.y + 72), pd["desc"], 8, C_TEXT, 1, 11.0)
 	_t(Vector2(320, 270), "PRESS 1 / 2 / 3 OR CLICK", 8, C_DIM, 1)
 

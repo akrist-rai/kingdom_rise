@@ -73,28 +73,31 @@ static func prop(parent: Node, key: String, pos: Vector2, flip: bool = false, sh
 		s.set_meta("shadow", shadows.add_static(t, pos, s.offset, flip, shadow_k))
 	return s
 
-## Draws a dense crowd of soldiers in one canvas item (cheap, static).
+## Draws a dense crowd of soldiers in one canvas item (cheap, static). Figures are baked soldiers
+## (UnitArt.crowd_figures), team-coloured.
 class Crowd extends Node2D:
-	var figs: Array = []
+	var figs: Array = []       # [figure dict, position, flip]
 	var torches: Array = []
+	static func _pal(fac: String) -> String:
+		return "march" if fac == "qin" else "crown"
 	func add_row(fac: String, x0: float, x1: float, y: float, spacing: float, jitter: float, rng: RandomNumberGenerator, torch_every: int = 0) -> void:
+		var arr: Array = UnitArt.crowd_figures(_pal(fac))
+		if arr.is_empty():
+			return
 		var x := x0
 		var i := 0
 		while x < x1:
-			var arr: Array = Art.crowd[fac]
 			var p := Vector2(x + rng.randf_range(-jitter, jitter), y + rng.randf_range(-jitter, jitter)).floor()
 			var flip := rng.randf() < 0.5
 			if torch_every > 0 and i % torch_every == torch_every / 2:
-				figs.append([Art.crowd_torch[fac], p + Vector2(0, 2), flip])
-				torches.append(p + Vector2(-2.0 if flip else 2.0, -17.0))
-			else:
-				figs.append([arr[rng.randi() % arr.size()], p, flip])
-			x += spacing + rng.randf_range(-1.0, 1.5)
+				torches.append(p + Vector2(-2.0 if flip else 2.0, -20.0))
+			figs.append([arr[rng.randi() % arr.size()], p, flip])
+			x += spacing * 1.6 + rng.randf_range(-1.0, 2.0)
 			i += 1
 	func add_ring(fac_left: String, fac_right: String, c: Vector2, rx: float, ry: float, rows: int, rng: RandomNumberGenerator, half: int = 0, torch_every: int = 0) -> void:
 		for r in rows:
-			var rr := 1.0 + r * 0.085
-			var n := int(TAU * rx * rr / 7.5)
+			var rr := 1.0 + r * 0.11
+			var n := int(TAU * rx * rr / 11.0)
 			for i in n:
 				var a := TAU * i / n + rng.randf_range(-0.01, 0.01)
 				if (half == 1 and sin(a) > 0.0) or (half == 2 and sin(a) <= 0.0):
@@ -103,10 +106,9 @@ class Crowd extends Node2D:
 				var fac := fac_left if cos(a) < 0.0 else fac_right
 				var flip := cos(a) > 0.0
 				if torch_every > 0 and r == 0 and i % torch_every == 0:
-					figs.append([Art.crowd_torch[fac], p + Vector2(0, 2), flip])
-					torches.append(p + Vector2(-2.0 if flip else 2.0, -17.0))
-				else:
-					var arr: Array = Art.crowd[fac]
+					torches.append(p + Vector2(-2.0 if flip else 2.0, -20.0))
+				var arr: Array = UnitArt.crowd_figures(_pal(fac))
+				if not arr.is_empty():
 					figs.append([arr[rng.randi() % arr.size()], p, flip])
 	func finish() -> void:
 		figs.sort_custom(func(a, b): return a[1].y < b[1].y)
@@ -118,11 +120,16 @@ class Crowd extends Node2D:
 		(material as ShaderMaterial).set_shader_parameter("excite", v)
 	func _draw() -> void:
 		for f in figs:
-			var t: Texture2D = f[0]
+			var d: Dictionary = f[0]
+			var t: Texture2D = d["tex"]
 			var p: Vector2 = f[1]
-			var rect := Rect2(p - Vector2(4, 17), t.get_size())
+			var sz := t.get_size()
+			var ax: float = d["ax"]
 			if f[2]:
-				rect = Rect2(p - Vector2(4, 17) + Vector2(t.get_width(), 0), Vector2(-t.get_width(), t.get_height()))
+				ax = sz.x - ax
+			var rect := Rect2(p - Vector2(ax, float(d["ay"])), sz)
+			if f[2]:
+				rect = Rect2(rect.position + Vector2(sz.x, 0), Vector2(-sz.x, sz.y))
 			var ph := fposmod(p.x * 0.618 + p.y * 0.377, 1.0) / 97.0 * 97.0
 			draw_texture_rect(t, rect, false, Color(1.0, 1.0, ph))
 
@@ -181,6 +188,8 @@ static func fire(b, pos: Vector2, size: int, parent: Node = null) -> void:
 	em.material = am
 	em.visibility_layer = 3
 	b.glowfx.add_child(em)
+	if "fire_emitters" in b:
+		b.fire_emitters.append(em)
 	if size >= 1:
 		var sm := CPUParticles2D.new()
 		sm.amount = [0, 5, 8][size]
@@ -204,10 +213,15 @@ static func fire(b, pos: Vector2, size: int, parent: Node = null) -> void:
 		sm.scale_amount_curve = sc
 		var sg := Gradient.new()
 		sg.set_color(0, Color(0.5, 0.44, 0.48, 0.0))
-		sg.add_point(0.12, Color(0.48, 0.42, 0.46, 0.16))
+		sg.add_point(0.12, Color(0.42, 0.38, 0.4, 0.42))
 		sg.set_color(sg.get_point_count() - 1, Color(0.7, 0.68, 0.76, 0.0))
 		sm.color_ramp = sg
+		sm.texture = load("res://assets/fx/smoke_2.png")
+		sm.scale_amount_min = 0.1
+		sm.scale_amount_max = 0.16
 		b.high.add_child(sm)
+		if "fire_emitters" in b:
+			b.fire_emitters.append(sm)
 
 static func populate(b) -> void:
 	fire_light = 1.0
@@ -266,18 +280,24 @@ static func populate(b) -> void:
 	for i in wrecks.size():
 		var wp: Vector2 = wrecks[i]
 		var kind: String = ["wreck_tower", "wreck_cart", "wreck_chariot"][i % 3]
-		prop(world, kind, wp, rng.randf() < 0.5, sh)
+		# a burnt-out engine or wagon: charred timbers and spilled stores (baked props)
+		var char_mod := Color(0.42, 0.37, 0.35)
+		var parts: Array = {"wreck_tower": [["scaffold", Vector2.ZERO, 0.9], ["lumber", Vector2(26, 10), 0.8], ["ladder", Vector2(-22, 14), 0.8]],
+			"wreck_cart": [["cart", Vector2.ZERO, 1.0], ["barrel", Vector2(-20, 8), 0.8], ["crate_open", Vector2(18, 12), 0.8]],
+			"wreck_chariot": [["crates_long", Vector2.ZERO, 0.9], ["pallet", Vector2(-18, 10), 0.8], ["sack", Vector2(16, 6), 0.9]]}[kind]
+		for pt in parts:
+			b.scenery.prop(pt[0], wp + pt[1], {"scale": pt[2], "flip": rng.randf() < 0.5, "mod": char_mod, "solid": pt[1] == Vector2.ZERO})
 		fire(b, wp + Vector2(rng.randf_range(-6, 6), -2), 2 if kind == "wreck_tower" else 1)
 		for k in 6:
 			b.decals.stamp(Art.tex["arrow_stuck"], wp + Vector2(rng.randf_range(-40, 40), rng.randf_range(-20, 24)), rng.randf() < 0.5, Color.WHITE)
 		b.decals.scorch(wp + Vector2(0, 2), 30.0 if kind == "wreck_tower" else 20.0)
 	# --- scattered debris of earlier fighting
-	var keys := ["sword_stuck", "sword_tilt", "spear_stuck", "rock0", "rock1", "rock2", "shield_drop", "dead_tree", "stakes", "arrow_stuck", "stele"]
-	var weights := [10, 8, 6, 6, 4, 2, 4, 2, 3, 12, 1]
+	var keys := ["sword_stuck", "sword_tilt", "spear_stuck", "shield_drop", "stakes", "arrow_stuck"]
+	var weights := [10, 8, 6, 4, 3, 12]
 	var total := 0
 	for wv in weights:
 		total += wv
-	for i in 240:
+	for i in 170:
 		var pos := Vector2(rng.randf_range(80, W - 80), rng.randf_range(Battle.TOP + 10, Battle.BOT - 10))
 		var r := rng.randi() % total
 		var k := 0
@@ -294,7 +314,7 @@ static func populate(b) -> void:
 	var sway := ShaderMaterial.new()
 	sway.shader = load("res://shaders/sway.gdshader")
 	b.grass_mat = sway
-	for i in 520:
+	for i in 300:
 		var gp := Vector2(rng.randf_range(20, W - 20), rng.randf_range(Battle.TOP - 4, Battle.BOT + 10))
 		var edge := minf(absf(gp.y - Battle.TOP), absf(gp.y - Battle.BOT))
 		if edge > 150.0 and rng.randf() < 0.6:
@@ -303,17 +323,76 @@ static func populate(b) -> void:
 		gs.material = sway
 		var sc := rng.randf_range(0.8, 1.25)
 		gs.scale = Vector2(sc, sc)
-	for i in 14:
-		prop(world, "pine", Vector2(rng.randf_range(0, W), rng.randf_range(Battle.TOP - 6, Battle.TOP + 4)), false, sh)
-	for i in 900:
-		var gp := Vector2(rng.randf_range(0, W), rng.randf_range(Battle.TOP - 10, Battle.BOT + 20))
-		var edge := minf(absf(gp.y - Battle.TOP), absf(gp.y - Battle.BOT))
-		if edge > 120.0 and rng.randf() < 0.7:
-			continue
-		b.decals.stamp(Art.tex["grass%d" % (rng.randi() % 4)], gp, rng.randf() < 0.5, Color(0.9, 0.9, 0.95))
+	_dress_snow(b, rng, wrecks)
 	# --- war camps (just outside the playable area)
 	_camp(b, rng, "qin", -230.0, 20.0)
 	_camp(b, rng, "zhao", W + 20.0, W + 230.0)
+
+## Winter dressing from the baked CC0 nature set: a dark pine forest climbing the foothills
+## behind the far army and closing in at both flanks, lone dead trees and snow-capped boulders
+## across the field, frozen brush, and frosted grass in clumps. Everything takes the snow look.
+static func _dress_snow(b, rng: RandomNumberGenerator, wrecks: Array) -> void:
+	var S: Scenery = b.scenery
+	var W: float = Battle.W
+	var top: float = Battle.TOP
+	var bot: float = Battle.BOT
+	S.set_snow(0.8)
+	var start := Vector2(840.0, Battle.H * 0.5)
+	var clear := func(p: Vector2) -> bool:
+		if p.distance_to(start) < 150.0:
+			return true
+		for w in wrecks:
+			if p.distance_to(w) < 70.0:
+				return true
+		return false
+	# the forest on the foothills: rows of pines, bigger and denser further back
+	var y := 14.0
+	while y > -230.0:
+		var x := -380.0 + rng.randf_range(0.0, 30.0)
+		while x < W + 380.0:
+			var depth := clampf(-y / 230.0, 0.0, 1.0)
+			S.prop("pine_%d" % rng.randi_range(1, 5), Vector2(x, y + rng.randf_range(-8.0, 8.0)),
+				{"scale": rng.randf_range(1.0, 1.35) + depth * 0.4, "flip": rng.randf() < 0.5, "sway": "tree",
+				"mod": Color(1.0 - depth * 0.25, 1.0 - depth * 0.2, 1.0 - depth * 0.1)})
+			x += rng.randf_range(34.0, 62.0) * (1.0 - depth * 0.3)
+		y -= rng.randf_range(26.0, 36.0)
+	# the flanks beyond the camps
+	for side in [-1.0, 1.0]:
+		for i in 70:
+			var fx: float = (-250.0 - rng.randf_range(0.0, 200.0)) if side < 0.0 else (W + 250.0 + rng.randf_range(0.0, 200.0))
+			var fy := rng.randf_range(top - 40.0, bot + 120.0)
+			S.prop("pine_%d" % rng.randi_range(1, 5), Vector2(fx, fy), {"scale": rng.randf_range(1.0, 1.5), "flip": rng.randf() < 0.5, "sway": "tree"})
+	# lone trees in the field: mostly dead, a few pines
+	for i in 22:
+		var p := Vector2(rng.randf_range(120.0, W - 120.0), rng.randf_range(top + 30.0, bot - 30.0))
+		if clear.call(p):
+			continue
+		var dead := rng.randf() < 0.7
+		var kind: String = "dead_%d" % rng.randi_range(1, 5) if dead else "pine_%d" % rng.randi_range(1, 5)
+		# bare wood is baked dark: lift it so the frost and snow on the branches can show
+		S.prop(kind, p, {"scale": rng.randf_range(0.85, 1.2), "flip": rng.randf() < 0.5, "sway": "tree", "solid": Rect2(-5, -3, 10, 6),
+			"mod": Color(1.9, 1.8, 1.7) if dead else Color.WHITE})
+		for k in rng.randi_range(1, 3):
+			var q := p + Vector2(rng.randf_range(-26.0, 26.0), rng.randf_range(-6.0, 16.0))
+			S.prop(["bush_2", "bush_2", "rock_1", "rock_2"][rng.randi() % 4], q, {"scale": rng.randf_range(0.6, 0.95), "flip": rng.randf() < 0.5, "sway": "bush"})
+	# boulders, some in little groups
+	for i in 26:
+		var p := Vector2(rng.randf_range(60.0, W - 60.0), rng.randf_range(top + 20.0, bot - 20.0))
+		if clear.call(p):
+			continue
+		var big := rng.randf() < 0.35
+		S.prop("boulder_%d" % rng.randi_range(1, 3) if big else "rock_%d" % rng.randi_range(1, 3), p,
+			{"scale": rng.randf_range(0.7, 1.1), "flip": rng.randf() < 0.5, "solid": big})
+		if rng.randf() < 0.5:
+			S.prop("rock_%d" % rng.randi_range(1, 3), p + Vector2(rng.randf_range(-20.0, 20.0), rng.randf_range(4.0, 12.0)), {"scale": rng.randf_range(0.45, 0.7)})
+	# frozen brush and frosted grass
+	for i in 40:
+		var p := Vector2(rng.randf_range(40.0, W - 40.0), rng.randf_range(top + 10.0, bot))
+		if not clear.call(p):
+			S.prop("bush_2", p, {"scale": rng.randf_range(0.6, 1.0), "flip": rng.randf() < 0.5, "sway": "bush"})
+	var field := Rect2(-200.0, top - 30.0, W + 400.0, bot - top + 90.0)
+	S.scatter_clumps(field, 70, Vector2i(3, 7), 24.0, ["grass_1", "grass_2", "grass_3", "grass_4"], rng, clear, Vector2(0.7, 1.05), Color(1.0, 0.92, 0.75))
+	S.scatter_clumps(Rect2(-300.0, top - 60.0, W + 600.0, 70.0), 60, Vector2i(3, 7), 30.0, ["grass_1", "grass_3", "fern"], rng, Callable(), Vector2(0.8, 1.2))
 
 static func _camp(b, rng: RandomNumberGenerator, fac: String, x0: float, x1: float) -> void:
 	var world: Node2D = b.world

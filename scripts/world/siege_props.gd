@@ -5,6 +5,23 @@ extends RefCounted
 ## the south edge of their footprint, so a soldier behind a house is hidden by its roof; tall
 ## things fade when the player walks behind them. The siege engines roll north and animate.
 
+## A stone face for a vector building: a polygon drawn behind the host's own lines and shaded by
+## the wall shader, so towers and the gatehouse share the curtain wall's weathered ashlar.
+static func stone_face(host: Node2D, poly: PackedVector2Array, top: float, foot: float, tone := 1.0) -> Polygon2D:
+	var pg := Polygon2D.new()
+	pg.polygon = poly
+	pg.show_behind_parent = true
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/wall_face.gdshader")
+	mat.set_shader_parameter("origin", host.position)
+	mat.set_shader_parameter("kofs", top)
+	mat.set_shader_parameter("rsize", Vector2(400.0, foot - top))
+	mat.set_shader_parameter("pilaster", 100000.0)
+	mat.set_shader_parameter("stone", Vector3(0.66, 0.64, 0.55) * tone)
+	pg.material = mat
+	host.add_child(pg)
+	return pg
+
 ## A city house: a lit facade on the south side (one or two storeys) under a tiled hip roof.
 class House extends Node2D:
 	var battle = null
@@ -178,14 +195,14 @@ class Merlons extends Node2D:
 			x0 = g[1]
 
 	func _run(p: Painter, x0: float, x1: float) -> void:
-		p.fill(Painter.rect(x0, -7.0, x1 - x0, 8.0), CityArt.STONE[0])
-		draw_line(Vector2(x0, -7.0), Vector2(x1, -7.0), CityArt.STONE[2], 1.0)
+		p.fill(Painter.rect(x0, -7.0, x1 - x0, 8.0), Color("#948f7a"))
+		draw_line(Vector2(x0, -7.0), Vector2(x1, -7.0), Color("#d6cfb4"), 1.0)
 		var x := x0 + 3.0
 		while x + 13.0 <= x1 - 2.0:
 			var m := Rect2(x, -22.0, 13.0, 15.0)
-			p.fill(Painter.rect(m.position.x, m.position.y, m.size.x, m.size.y), CityArt.STONE[0].lightened(0.05))
-			p.fill(Painter.rect(m.position.x, m.position.y, m.size.x, 3.0), CityArt.STONE[2])
-			p.fill(Painter.rect(m.end.x - 3.0, m.position.y + 3.0, 3.0, 12.0), CityArt.STONE[1])
+			p.fill(Painter.rect(m.position.x, m.position.y, m.size.x, m.size.y), Color("#aaa48d"))
+			p.fill(Painter.rect(m.position.x, m.position.y, m.size.x, 3.0), Color("#d6cfb4"))
+			p.fill(Painter.rect(m.end.x - 3.0, m.position.y + 3.0, 3.0, 12.0), Color("#69644f"))
 			p.ink(Painter.rect(m.position.x, m.position.y, m.size.x, m.size.y), true, 0.7)
 			x += 20.0
 		p.ink(Painter.rect(x0, -7.0, x1 - x0, 8.0), true, 0.7)
@@ -197,25 +214,20 @@ class WallTower extends Node2D:
 	var lv = null
 	var w := 120.0
 
+	func _body() -> PackedVector2Array:
+		var foot: float = lv.GROUND_Y - position.y
+		var top: float = lv.INNER_Y - position.y - 46.0
+		return PackedVector2Array([Vector2(-w * 0.5 - 5.0, foot), Vector2(w * 0.5 + 5.0, foot), Vector2(w * 0.5, top), Vector2(-w * 0.5, top)])
+
+	func _ready() -> void:
+		SiegeProps.stone_face(self, _body(), lv.INNER_Y - position.y - 46.0, lv.GROUND_Y - position.y, 1.06)
+
 	func _draw() -> void:
 		var L = lv
 		var p := Painter.new(self)
 		var foot: float = L.GROUND_Y - position.y
 		var top: float = L.INNER_Y - position.y - 46.0
-		var body := PackedVector2Array([Vector2(-w * 0.5 - 5.0, foot), Vector2(w * 0.5 + 5.0, foot), Vector2(w * 0.5, top), Vector2(-w * 0.5, top)])
-		p.fill(body, CityArt.STONE[0].lightened(0.08))
-		var y := top + 13.0
-		var row := 0
-		while y < foot - 1.0:
-			var k := (y - top) / (foot - top)
-			var hw := w * 0.5 + 5.0 * k
-			draw_line(Vector2(-hw, y), Vector2(hw, y), CityArt.STONE[1], 0.8)
-			var x := -hw + (0.0 if row % 2 == 0 else 14.0)
-			while x < hw:
-				draw_line(Vector2(x, y - 13.0), Vector2(x, y), CityArt.STONE[1], 0.6)
-				x += 28.0
-			y += 13.0
-			row += 1
+		var body := _body()
 		# the tower stands proud of the wall: its right side falls into shadow
 		p.fill(PackedVector2Array([Vector2(w * 0.5 - 16.0, top), Vector2(w * 0.5, top), Vector2(w * 0.5 + 5.0, foot), Vector2(w * 0.5 - 11.0, foot)]), Color(0.05, 0.03, 0.12, 0.4))
 		p.fill(PackedVector2Array([Vector2(-w * 0.5, top), Vector2(-w * 0.5 + 6.0, top), Vector2(-w * 0.5 + 1.0, foot), Vector2(-w * 0.5 - 5.0, foot)]), Color(1.0, 0.85, 0.7, 0.12))
@@ -279,44 +291,40 @@ class GateHouse extends Node2D:
 		var dy := y - (-AH + AW)
 		return sqrt(maxf(0.0, AW * AW - dy * dy))
 
+	func _arch() -> PackedVector2Array:
+		var arch := PackedVector2Array()
+		for i in 17:
+			var a := PI * i / 16.0
+			arch.append(Vector2(cos(a) * AW, -AH + AW - sin(a) * AW))
+		return arch
+
+	func _body() -> PackedVector2Array:
+		var top: float = lv.INNER_Y - position.y - 54.0
+		var tw := HW - 12.0
+		var body := PackedVector2Array([Vector2(-HW, 0), Vector2(-tw, top), Vector2(tw, top), Vector2(HW, 0), Vector2(AW, 0)])
+		body.append_array(_arch())
+		body.append(Vector2(-AW, 0))
+		return body
+
+	func _ready() -> void:
+		SiegeProps.stone_face(self, _body(), lv.INNER_Y - position.y - 54.0, 0.0, 1.1)
+
 	func _draw() -> void:
 		var L = lv
 		var p := Painter.new(self)
 		var top: float = L.INNER_Y - position.y - 54.0
 		var tw := HW - 12.0
-		var stone: Color = CityArt.STONE[0].lightened(0.1)
-		var arch := PackedVector2Array()
-		for i in 17:
-			var a := PI * i / 16.0
-			arch.append(Vector2(cos(a) * AW, -AH + AW - sin(a) * AW))
-		var body := PackedVector2Array([Vector2(-HW, 0), Vector2(-tw, top), Vector2(tw, top), Vector2(HW, 0), Vector2(AW, 0)])
-		body.append_array(arch)
-		body.append(Vector2(-AW, 0))
-		p.fill(body, stone)
-		# courses of stone, interrupted by the arch
-		var y := top + 14.0
-		var row := 0
-		while y < -1.0:
-			var k := (y - top) / -top
-			var hw := lerpf(tw, HW, k)
-			var ah := _arch_hw(y) if y > -AH else -1.0
-			if ah > 0.0:
-				draw_line(Vector2(-hw, y), Vector2(-ah - 6.0, y), CityArt.STONE[1], 0.8)
-				draw_line(Vector2(ah + 6.0, y), Vector2(hw, y), CityArt.STONE[1], 0.8)
-			else:
-				draw_line(Vector2(-hw, y), Vector2(hw, y), CityArt.STONE[1], 0.8)
-			var x := -hw + (0.0 if row % 2 == 0 else 15.0)
-			while x < hw:
-				if ah < 0.0 or absf(x) > ah + 6.0:
-					draw_line(Vector2(x, y - 14.0), Vector2(x, y), CityArt.STONE[1], 0.6)
-				x += 30.0
-			y += 14.0
-			row += 1
-		# voussoirs and keystone around the arch
-		for i in 13:
-			var a := PI * i / 12.0
-			var c := Vector2(0, -AH + AW)
-			draw_line(c + Vector2(cos(a), -sin(a)) * AW, c + Vector2(cos(a), -sin(a)) * (AW + 13.0), CityArt.STONE[1], 1.0)
+		var arch := _arch()
+		var body := _body()
+		# voussoirs and keystone around the arch: a ring of dressed stone, each wedge lit on its upper side
+		var c0 := Vector2(0, -AH + AW)
+		for i in 12:
+			var a0 := PI * i / 12.0
+			var a1 := PI * (i + 1) / 12.0
+			var wedge := PackedVector2Array([c0 + Vector2(cos(a0), -sin(a0)) * AW, c0 + Vector2(cos(a0), -sin(a0)) * (AW + 13.0),
+				c0 + Vector2(cos(a1), -sin(a1)) * (AW + 13.0), c0 + Vector2(cos(a1), -sin(a1)) * AW])
+			p.fill(wedge, Color("#b9b49c").darkened(0.08 * (i % 2) + 0.18 * (1.0 - absf(cos((a0 + a1) * 0.5 - PI * 0.65)))))
+			draw_polyline(wedge, Color(0.12, 0.1, 0.08, 0.6), 0.8, true)
 		var arc := PackedVector2Array()
 		for i in 17:
 			var a := PI * i / 16.0
@@ -325,8 +333,8 @@ class GateHouse extends Node2D:
 		p.fill(PackedVector2Array([Vector2(-6, -AH - 1), Vector2(6, -AH - 1), Vector2(8, -AH - 15), Vector2(-8, -AH - 15)]), CityArt.STONE[2])
 		# shading: lit left edge, shadowed right flank, dark plinth
 		p.fill(PackedVector2Array([Vector2(tw - 18.0, top), Vector2(tw, top), Vector2(HW, 0), Vector2(HW - 18.0, 0)]), Color(0.05, 0.03, 0.12, 0.38))
-		p.fill(Painter.rect(-HW, -10.0, HW - AW, 10.0), CityArt.STONE[1])
-		p.fill(Painter.rect(AW, -10.0, HW - AW, 10.0), CityArt.STONE[1])
+		p.fill(Painter.rect(-HW, -10.0, HW - AW, 10.0), Color(0.1, 0.09, 0.07, 0.42))
+		p.fill(Painter.rect(AW, -10.0, HW - AW, 10.0), Color(0.1, 0.09, 0.07, 0.42))
 		p.ink(body, true, 1.4)
 		# rows of arrow-slit windows, some lit from inside
 		for r in 3:
@@ -582,56 +590,20 @@ class SiegeTowerV extends Node2D:
 	var bridge := 0.0
 	const TH := 160.0
 
+	var spr: Sprite2D
+
+	func _ready() -> void:
+		spr = get_parent().get_parent().scenery.engine_sprite(self, "siege_tower_0")
+
+	# baked tower (tools/bake_siege.gd): drawbridge up while it rolls, down when docked
 	func _process(delta: float) -> void:
 		t += delta
-		queue_redraw()
-
-	func _draw() -> void:
-		var p := Painter.new(self)
+		if not Battle.view.grow(200.0).has_point(position):
+			return
 		var moving := started and not docked
-		var wob := sin(t * 3.0) * 0.8 if moving else 0.0
-		var wb := 60.0
-		var wt := 46.0
-		var body := PackedVector2Array([Vector2(-wb * 0.5, -8.0), Vector2(wb * 0.5, -8.0), Vector2(wt * 0.5 + wob, -TH), Vector2(-wt * 0.5 + wob, -TH)])
-		p.fill(body, Color("#4a3426"))
-		var n := 8
-		for k in n:
-			var y0 := -8.0 - k * (TH - 8.0) / n
-			var y1 := y0 - (TH - 8.0) / n
-			var hw0 := lerpf(wb, wt, float(k) / n) * 0.5
-			var hw1 := lerpf(wb, wt, float(k + 1) / n) * 0.5
-			var band := PackedVector2Array([Vector2(-hw0 + 1.5, y0 - 1.5), Vector2(hw0 - 1.5, y0 - 1.5), Vector2(hw1 - 1.5 + wob * (k + 1) / n, y1 + 1.5), Vector2(-hw1 + 1.5 + wob * (k + 1) / n, y1 + 1.5)])
-			p.fill(band, Color("#6e4a34") if k % 2 == 0 else Color("#5e3e2c"))
-			draw_line(Vector2(-hw0, y0), Vector2(hw0, y0), Color("#2a1810"), 1.4)
-			if k % 3 == 1:
-				p.fill(Painter.rect(-5.0 + wob * k / n, y0 - 12.0, 10.0, 6.0), Color("#140c10"))
-		draw_line(Vector2(-wb * 0.5, -8.0), Vector2(wt * 0.5 + wob, -TH), Color("#2a1810"), 1.2)
-		draw_line(Vector2(wb * 0.5, -8.0), Vector2(-wt * 0.5 + wob, -TH), Color("#2a1810"), 1.2)
-		p.fill(PackedVector2Array([Vector2(wb * 0.5 - 10.0, -8.0), Vector2(wb * 0.5, -8.0), Vector2(wt * 0.5 + wob, -TH), Vector2(wt * 0.5 - 8.0 + wob, -TH)]), Color(0.05, 0.03, 0.08, 0.35))
-		p.ink(body, true, 1.2)
-		for s in [-1.0, 1.0]:
-			var c := Vector2(s * 26.0, -6.0)
-			p.fill(Painter.ellipse(c, 6.0, 8.0, 14), Color("#3a2418"))
-			var spin := t * 2.0 if moving else 0.0
-			for k in 3:
-				var a := spin + k * PI / 3.0
-				draw_line(c - Vector2(cos(a) * 5.0, sin(a) * 7.0), c + Vector2(cos(a) * 5.0, sin(a) * 7.0), Color("#6a4632"), 1.0)
-			p.ink(Painter.ellipse(c, 6.0, 8.0, 14), true, 0.7)
-		# top platform with a wicker parapet and a Qin banner
-		var top := Vector2(wob, -TH)
-		p.fill(Painter.rect(top.x - wt * 0.6, top.y - 10.0, wt * 1.2, 10.0), Color("#7a5434"))
-		for k in 7:
-			draw_line(Vector2(top.x - wt * 0.6 + k * wt * 0.2, top.y - 10.0), Vector2(top.x - wt * 0.6 + k * wt * 0.2, top.y), Color("#3a2418"), 0.9)
-		p.ink(Painter.rect(top.x - wt * 0.6, top.y - 10.0, wt * 1.2, 10.0), true, 0.8)
-		CityArt.pennant(self, top + Vector2(-wt * 0.5, -10.0), 30.0, 15.0, Color("#b8262c"), x * 0.01, t)
-		# the drawbridge: standing up while it rolls, dropped flat onto the walk when docked
-		var bh := lerpf(34.0, 26.0, bridge)
-		var plank := Painter.rect(top.x - wt * 0.42, top.y - 10.0 - bh, wt * 0.84, bh)
-		p.fill(plank, Color("#3e2a1e").lerp(Color("#9a6c46"), bridge))
-		for k in 5:
-			var yy := top.y - 10.0 - bh + (k + 0.5) * bh / 5.0
-			draw_line(Vector2(top.x - wt * 0.42, yy), Vector2(top.x + wt * 0.42, yy), Color("#2a1810"), 0.8)
-		p.ink(plank, true, 0.9)
+		get_parent().get_parent().scenery.set_frame(spr, "siege_tower_1" if bridge > 0.5 else "siege_tower_0")
+		spr.rotation = sin(t * 3.0) * 0.012 if moving else 0.0
+		spr.position.y = -absf(sin(t * 6.0)) * 0.8 if moving else 0.0
 
 ## The covered ram rolling north on the avenue to the gate: a gabled roof of wet hides seen from
 ## behind and above, wheels along both sides, and a bronze-headed log that swings into the doors.
@@ -641,43 +613,20 @@ class RamV extends Node2D:
 	var moving := false
 	var t := 0.0
 
+	var spr: Sprite2D
+
+	func _ready() -> void:
+		spr = get_parent().get_parent().scenery.engine_sprite(self, "ram_0")
+
+	# baked ram: the log thrusts with each swing
 	func _process(delta: float) -> void:
 		t += delta
 		swing = maxf(0.0, swing - delta * 3.0)
-		queue_redraw()
-
-	func _draw() -> void:
-		var p := Painter.new(self)
-		var thrust := sin(minf(1.0, 1.0 - swing) * PI) * 14.0 if swing > 0.0 else 0.0
-		for s in [-1.0, 1.0]:
-			for k in 3:
-				var c := Vector2(s * 27.0, -10.0 - k * 27.0)
-				p.fill(Painter.ellipse(c, 3.6, 7.5, 10), Color("#2a1810"))
-				p.ink(Painter.ellipse(c, 3.6, 7.5, 10), true, 0.5)
-		var ly := -88.0 - thrust
-		draw_line(Vector2(0, -60.0), Vector2(0, ly), Color("#2a1810"), 9.0, true)
-		draw_line(Vector2(0, -60.0), Vector2(0, ly), Color("#6e4a34"), 6.4, true)
-		var head := Painter.blob(PackedVector2Array([Vector2(-8, ly + 3), Vector2(-6, ly - 9), Vector2(6, ly - 9), Vector2(8, ly + 3)]), 2)
-		p.fill(head, Color("#b8862e"))
-		p.ink(head, true, 0.7)
-		var lroof := PackedVector2Array([Vector2(-29, -2), Vector2(0, -8), Vector2(0, -80), Vector2(-25, -74)])
-		var rroof := PackedVector2Array([Vector2(0, -8), Vector2(29, -2), Vector2(25, -74), Vector2(0, -80)])
-		p.fill(lroof, Color("#6a4834"))
-		p.fill(rroof, Color("#3e2a22"))
-		for k in 7:
-			var yy := -10.0 - k * 10.0
-			draw_line(Vector2(-27.0 + k * 0.5, yy + 1.5), Vector2(0, yy - 4.0), Color("#4a3224"), 1.0)
-			draw_line(Vector2(0, yy - 4.0), Vector2(27.0 - k * 0.5, yy + 1.5), Color("#2a1a14"), 1.0)
-		draw_line(Vector2(0, -8), Vector2(0, -80), Color("#8a6044"), 1.4)
-		p.ink(lroof, true, 0.9)
-		p.ink(rroof, true, 0.9)
-		# the open rear end with the crew's legs
-		p.fill(Painter.rect(-22.0, -4.0, 44.0, 6.0), Color("#1a1018"))
-		if moving:
-			for i in 4:
-				var fx := -16.0 + i * 10.6
-				var ph := sin(t * 9.0 + i)
-				draw_line(Vector2(fx, -4.0), Vector2(fx + ph * 2.0, 3.0), Color("#3a2a30"), 2.0)
+		if not Battle.view.grow(160.0).has_point(position):
+			return
+		var thrust := sin(minf(1.0, 1.0 - swing) * PI) if swing > 0.0 else 0.0
+		get_parent().get_parent().scenery.set_frame(spr, "ram_%d" % clampi(int(round(thrust * 2.0)), 0, 2))
+		spr.position.y = -absf(sin(t * 7.0)) * 0.6 if moving else 0.0
 
 ## Strings of red lanterns hung across a street, swaying a little (drawn above the soldiers).
 class LanternLine extends Node2D:
@@ -689,7 +638,8 @@ class LanternLine extends Node2D:
 
 	func _process(delta: float) -> void:
 		t += delta
-		queue_redraw()
+		if Engine.get_process_frames() % 3 == 0 and Battle.view.grow(60.0).intersects(Rect2(a, b - a).abs().grow(20.0)):
+			queue_redraw()
 
 	func _draw() -> void:
 		var sag := a.distance_to(b) * 0.12
@@ -813,36 +763,21 @@ class Trebuchet extends Node2D:
 	func throw() -> void:
 		fire_t = 0.0
 
+	var spr: Sprite2D
+
+	func _ready() -> void:
+		spr = get_parent().get_parent().scenery.engine_sprite(self, "treb_0")
+
+	# baked trebuchet: the arm whips over on a throw, then is winched back
 	func _process(delta: float) -> void:
 		t += delta
 		fire_t += delta
-		queue_redraw()
-
-	func _draw() -> void:
-		var p := Painter.new(self)
-		# A-frame
-		for s in [-1.0, 1.0]:
-			draw_line(Vector2(s * 22.0, 0), Vector2(0, -52.0), Color("#2a1810"), 4.0, true)
-			draw_line(Vector2(s * 22.0, 0), Vector2(0, -52.0), Color("#6a4632"), 2.6, true)
-		draw_line(Vector2(-26, 0), Vector2(26, 0), Color("#4a2c1c"), 4.0)
-		# arm: cocked back, then whipping forward
+		if not Battle.view.grow(200.0).has_point(position):
+			return
 		var k := clampf(fire_t / 0.35, 0.0, 1.0)
-		var reload := clampf((fire_t - 1.2) / 3.0, 0.0, 1.0)
-		var ang := lerpf(deg_to_rad(150.0), deg_to_rad(-60.0), 1.0 - (1.0 - k) * (1.0 - k))
 		if fire_t > 1.2:
-			ang = lerpf(deg_to_rad(-60.0), deg_to_rad(150.0), reload)
-		var piv := Vector2(0, -50.0)
-		var tip := piv + Vector2.from_angle(ang) * 62.0
-		var cw := piv - Vector2.from_angle(ang) * 16.0
-		draw_line(piv, tip, Color("#1e120c"), 3.6, true)
-		draw_line(piv, tip, Color("#7a5434"), 2.2, true)
-		p.fill(Painter.rect(cw.x - 8.0, cw.y - 2.0, 16.0, 14.0), Color("#3a2a24"))
-		p.ink(Painter.rect(cw.x - 8.0, cw.y - 2.0, 16.0, 14.0), true, 0.8)
-		var sling := tip + Vector2(0, 14.0).rotated(ang * 0.3)
-		draw_line(tip, sling, Color("#1e120c"), 0.8)
-		if fire_t > 1.2 and reload > 0.9:
-			draw_circle(sling, 4.0, Color("#ff8a3a"))
-		p.fill(Painter.circle(piv, 3.0, 10), Color("#c9a24a"))
+			k = 1.0 - clampf((fire_t - 1.2) / 3.0, 0.0, 1.0)
+		get_parent().get_parent().scenery.set_frame(spr, "treb_%d" % clampi(int(round(k * 4.0)), 0, 4))
 
 ## Flaming trebuchet stones in flight, and pools of burning oil poured from the gatehouse.
 class SiegeFx extends Node2D:
@@ -851,7 +786,8 @@ class SiegeFx extends Node2D:
 
 	func _process(delta: float) -> void:
 		t += delta
-		queue_redraw()
+		if not lv.stones.is_empty() or not lv.oil.is_empty() or Engine.get_process_frames() % 10 == 0:
+			queue_redraw()
 
 	func _draw() -> void:
 		var gl: Texture2D = Art.tex["glow"]
@@ -885,17 +821,47 @@ class SiegeFx extends Node2D:
 			var c: Vector2 = o["pos"]
 			var r: float = o["r"]
 			var st: String = o["state"]
-			draw_set_transform(c, 0.0, Vector2(1.0, 0.6))
 			if st == "warn":
+				draw_set_transform(c, 0.0, Vector2(1.0, 0.6))
 				var pulse := 0.5 + 0.5 * sin(t * 18.0)
 				draw_arc(Vector2.ZERO, r, 0.0, TAU, 36, Color(1.0, 0.55, 0.15, 0.4 + 0.5 * pulse), 2.0, true)
 				draw_arc(Vector2.ZERO, r * 0.5, 0.0, TAU, 24, Color(1.0, 0.55, 0.15, 0.3 * pulse), 1.0, true)
+				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			else:
-				draw_circle(Vector2.ZERO, r, Color(0.12, 0.05, 0.03, 0.75))
-				for i in 7:
-					var q := Vector2.from_angle(i * 0.9 + t) * r * 0.55 * (0.4 + 0.6 * fmod(i * 0.37, 1.0))
-					draw_texture_rect(gl, Rect2(q - Vector2(9, 9), Vector2(18, 18)), false, Color(1.0, 0.45, 0.12, 0.5))
-			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+				_burning_oil(o, c, r, gl)
+
+	## A spreading slick of pitch: an irregular dark pool with a greasy sheen, ringed by
+	## flickering tongues of fire that die down as it burns out.
+	func _burning_oil(o: Dictionary, c: Vector2, r: float, gl: Texture2D) -> void:
+		var bt: float = o["t"]
+		var spread := minf(1.0, bt / 0.35)
+		var fade := 1.0 - clampf((bt - 3.2) / 0.8, 0.0, 1.0)
+		var sd := c.x * 0.13 + c.y * 0.07
+		var pts := PackedVector2Array()
+		for i in 20:
+			var a := TAU * i / 20.0
+			var rr := r * spread * (0.82 + 0.14 * sin(a * 3.0 + sd) + 0.07 * sin(a * 7.0 + sd * 2.0))
+			pts.append(c + Vector2(cos(a) * rr, sin(a) * rr * 0.6))
+		draw_colored_polygon(pts, Color(0.06, 0.04, 0.03, 0.82 * fade + 0.1))
+		draw_set_transform(c + Vector2(-r * 0.25, -r * 0.12), 0.0, Vector2(1.0, 0.5))
+		draw_arc(Vector2.ZERO, r * 0.4 * spread, PI * 1.1, PI * 1.6, 10, Color(0.6, 0.5, 0.42, 0.25 * fade), 1.4, true)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		# the pool glows from within, then flames lick up across it
+		draw_texture_rect(gl, Rect2(c - Vector2(r, r * 0.6) * 1.3, Vector2(r, r * 0.6) * 2.6), false, Color(1.0, 0.42, 0.1, 0.45 * fade))
+		var fx = lv.b.fx
+		var fl: Array = [fx.tex["flame_1"], fx.tex["flame_2"]]
+		for i in 13:
+			var h := fmod(i * 0.618 + sd, 1.0)
+			var a := i * 2.39996 + sd
+			var q := c + Vector2(cos(a), sin(a) * 0.6) * r * spread * (0.15 + 0.75 * sqrt(h))
+			var flick := 0.75 + 0.25 * sin(t * (13.0 + i) + i * 1.7)
+			var hgt := (18.0 + 14.0 * fmod(i * 0.37, 1.0)) * flick * fade * spread
+			if hgt < 2.0:
+				continue
+			var w := hgt * 0.55
+			var tx: Texture2D = fl[i % 2]
+			draw_texture_rect(tx, Rect2(q - Vector2(w * 0.5, hgt * 0.92), Vector2(w, hgt)), false, Color(1.0, 0.55 + 0.2 * h, 0.2, 0.85))
+			draw_texture_rect(tx, Rect2(q - Vector2(w * 0.25, hgt * 0.62), Vector2(w * 0.5, hgt * 0.6)), false, Color(1.0, 0.92, 0.6, 0.7))
 
 ## A row of swallow-tail banners on poles, flapping in the hot wind of the fires.
 class PennantRow extends Node2D:
@@ -907,7 +873,8 @@ class PennantRow extends Node2D:
 
 	func _process(delta: float) -> void:
 		t += delta
-		queue_redraw()
+		if Engine.get_process_frames() % 3 == 0:
+			queue_redraw()
 
 	func _draw() -> void:
 		for f in flags:

@@ -18,6 +18,15 @@ var wipe_cb: Callable
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	get_tree().process_frame.connect(func(): _ph0 = Time.get_ticks_usec())
+	RenderingServer.frame_pre_draw.connect(func():
+		_ph1 = Time.get_ticks_usec()
+		if _ph0 > 0:
+			_acc_proc += _ph1 - _ph0)
+	RenderingServer.frame_post_draw.connect(func():
+		if _ph1 > 0:
+			_acc_draw += Time.get_ticks_usec() - _ph1
+			_acc_n += 1)
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--len="):
 			test_len = float(a.substr(6))
@@ -90,6 +99,7 @@ func _swap(n: Node) -> void:
 
 func show_title() -> void:
 	Sfx.boss_mode = false
+	Sfx.menu_music()
 	var t := TitleScreen.new()
 	t.start_game.connect(func(): transition(start_battle))
 	t.open_map.connect(func(): transition(show_map))
@@ -99,6 +109,7 @@ func show_title() -> void:
 	_swap(t)
 
 func show_map() -> void:
+	Sfx.menu_music()
 	var m := CampaignMap.new()
 	m.march.connect(func(id: String):
 		next_level = "commander_city" if id == "bellacourt" else "siege" if id == "handan" else "snow_plains"
@@ -128,6 +139,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 
+var _ph0 := 0
+var _ph1 := 0
+var _acc_proc := 0
+var _acc_draw := 0
+var _acc_n := 0
+var perf_n := 0
+var perf_t := 0.0
+var perf_worst := 0.0
+var perf_last := 0
+
 func _process(delta: float) -> void:
 	if wipe_dir != 0:
 		var wr := minf(delta / maxf(Engine.time_scale, 0.0001), 0.05)
@@ -148,6 +169,13 @@ func _process(delta: float) -> void:
 		wipe.queue_redraw()
 	if not Game.autotest and not title_only:
 		return
+	var now_us := Time.get_ticks_usec()
+	if test_t > 3.0 and perf_last > 0:
+		var fdt := (now_us - perf_last) / 1000000.0
+		perf_n += 1
+		perf_t += fdt
+		perf_worst = maxf(perf_worst, fdt)
+	perf_last = now_us
 	var rdt := delta / maxf(Engine.time_scale, 0.0001)
 	if get_tree().paused:
 		rdt = delta
@@ -217,6 +245,17 @@ func _gallery() -> void:
 	_swap(root)
 
 func _report() -> void:
+	print("[perf] avg_fps=%.1f frames=%d worst_ms=%.0f" % [perf_n / maxf(0.001, perf_t), perf_n, perf_worst * 1000.0])
+	var c0 := Time.get_ticks_usec()
+	var acc := 0.0
+	for i in 300000:
+		acc += sin(float(i) * 0.001) * 0.5
+	print("[calib] %.1fms (machine speed reference, %.0f)" % [(Time.get_ticks_usec() - c0) / 1000.0, acc])
+	if _acc_n > 0:
+		print("[phase] process+draw-callbacks=%.1fms render=%.1fms (avg over %d frames)" % [_acc_proc / 1000.0 / _acc_n, _acc_draw / 1000.0 / _acc_n, _acc_n])
+		_acc_proc = 0
+		_acc_draw = 0
+		_acc_n = 0
 	print("[perf] fps=%d process_ms=%.1f draw_calls=%d objects=%d nodes=%d" % [Engine.get_frames_per_second(),
 		Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
 		int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)),

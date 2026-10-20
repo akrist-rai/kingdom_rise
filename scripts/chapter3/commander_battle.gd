@@ -44,6 +44,9 @@ func _build()->void:
 	decals.setup(Vector2(W,H))
 	shadows=ShadowLayer.new()
 	add_child(shadows)
+	unit_shadows=UnitShadows.new()
+	unit_shadows.battle=self
+	add_child(unit_shadows)
 	world=Node2D.new()
 	world.y_sort_enabled=true
 	add_child(world)
@@ -115,12 +118,12 @@ func _deploy()->void:
 	commander.hp=300
 	commander.base_speed=185
 	commander.brain=RegimentBrain.CommanderBrain.new()
-	commander.enable_cape(Unit.CAPE_PLAYER)
 	d.select_company(0)
 func _process(delta:float)->void:
 	delta=minf(delta,1.0/30.0)
 	if not ended:time+=delta
 	Game.stats["time"]=time
+	_update_view_rect()
 	_rebuild_grid()
 	_separation()
 	if not ended:

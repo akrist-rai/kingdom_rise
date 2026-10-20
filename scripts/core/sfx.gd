@@ -1,21 +1,42 @@
 extends Node
-## Procedural audio: every sound effect and the war-drum music loops are synthesised
-## at startup into AudioStreamWAV buffers (no audio files needed).
+## Audio. Combat sounds are recorded CC0 samples (assets/audio/sfx: Kenney Impact Sounds and RPG
+## Audio, artisticdude's Swishes and RPG Sound Pack), several variants per sound, layered for the
+## big moments; music is CC0 orchestral (assets/audio/music, see CREDITS.txt) with crossfades.
+## Horns, drums, gongs and the battle ambience are still synthesised at startup.
 
 const RATE := 22050
-const VOICES := 28
+const VOICES := 32
+const SFX_DIR := "res://assets/audio/sfx/"
+const MUSIC := {"title": "res://assets/audio/music/war_theme.ogg", "battle": "res://assets/audio/music/battle_loop.wav",
+	"boss": "res://assets/audio/music/boss_battle.wav"}
+## volume trim per sample bank (dB)
+const BANK_DB := {"swing": -7.0, "swing_heavy": -4.0, "hit": -3.0, "hit_heavy": -1.0, "clank": -9.0, "block": -5.0,
+	"parry": -3.0, "break": -3.0, "arrow_hit": -7.0, "step": -9.0, "step_snow": -9.0, "pickup": -4.0, "cloth": -9.0,
+	"ui": -8.0, "thud": -5.0, "wood": -5.0, "chop": -4.0, "slice": -6.0, "confirm": -6.0}
+## sounds played through another bank: [bank, pitch]
+const ALIAS := {"swing_fast": ["swing", 1.25], "dash": ["cloth", 1.1]}
+## extra layers for the big moments: [bank, dB, pitch]
+const LAYERS := {"crit": [["hit_heavy", 0.0, 0.85], ["break", -5.0, 1.15], ["slice", -6.0, 0.9]],
+	"hit_heavy": [["thud", -7.0, 1.0]], "death": [["thud", -6.0, 0.85]], "parry": [["clank", -6.0, 1.4]],
+	"swing_heavy": [["cloth", -10.0, 0.8]], "dash": [["swing", -14.0, 1.4]]}
 
 var streams := {}
+var banks := {}
 var players: Array[AudioStreamPlayer] = []
 var _next := 0
 var _last := {}
 var listener := Vector2.ZERO
-var music := {}          # name -> AudioStreamPlayer
+var music := {}          # name -> AudioStreamPlayer (synthesised loops: wind, ambience)
 var loops_ready := false
-var intensity := 0.0     # 0..1, drives the intense drum layer
+var intensity := 0.0     # 0..1 (style): lifts the music slightly
 var boss_mode := false
 var music_on := true
 var want_music := false
+var tracks := {}
+var mus_a: AudioStreamPlayer
+var mus_b: AudioStreamPlayer
+var mus_cur := ""
+var mus_fade := 1.0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -23,23 +44,64 @@ func _ready() -> void:
 		var pl := AudioStreamPlayer.new()
 		add_child(pl)
 		players.append(pl)
+	mus_a = AudioStreamPlayer.new()
+	mus_b = AudioStreamPlayer.new()
+	for m in [mus_a, mus_b]:
+		m.volume_db = -60.0
+		add_child(m)
 	var t0 := Time.get_ticks_msec()
 	_gen_sfx()
-	print("[Sfx] sfx built in %d ms" % (Time.get_ticks_msec() - t0))
+	_load_banks()
+	print("[Sfx] sfx built in %d ms (%d sample banks)" % [Time.get_ticks_msec() - t0, banks.size()])
 	WorkerThreadPool.add_task(_gen_loops_thread)
 
+func _load_banks() -> void:
+	var files: PackedStringArray
+	if ResourceLoader.has_method("list_directory"):
+		files = ResourceLoader.list_directory(SFX_DIR)
+	else:
+		files = DirAccess.get_files_at(SFX_DIR)
+	for f in files:
+		var fn := f.trim_suffix(".import").trim_suffix(".remap")
+		if not (fn.ends_with(".ogg") or fn.ends_with(".wav")):
+			continue
+		var base := fn.get_basename()
+		var cut := base.rfind("_")
+		var key := base.substr(0, cut) if cut > 0 and base.substr(cut + 1).is_valid_int() else base
+		var s = load(SFX_DIR + fn)
+		if s == null:
+			continue
+		if not banks.has(key):
+			banks[key] = []
+		if not (s in banks[key]):
+			banks[key].append(s)
+
 func play(name: String, vol_db: float = 0.0, pitch: float = 1.0, min_gap: float = 0.03) -> void:
-	if not streams.has(name):
-		return
 	var t := Time.get_ticks_msec() / 1000.0
 	if t - float(_last.get(name, -10.0)) < min_gap:
 		return
 	_last[name] = t
+	var bank := name
+	var p := pitch
+	if ALIAS.has(name):
+		bank = ALIAS[name][0]
+		p *= float(ALIAS[name][1])
+	if banks.has(bank):
+		var b: Array = banks[bank]
+		_voice(b[randi() % b.size()], vol_db + float(BANK_DB.get(bank, 0.0)), p * randf_range(0.93, 1.07))
+	elif streams.has(name):
+		_voice(streams[name], vol_db, pitch * randf_range(0.94, 1.06))
+	for l in LAYERS.get(name, []):
+		if banks.has(l[0]):
+			var lb: Array = banks[l[0]]
+			_voice(lb[randi() % lb.size()], vol_db + float(l[1]) + float(BANK_DB.get(l[0], 0.0)), pitch * float(l[2]) * randf_range(0.95, 1.05))
+
+func _voice(s: AudioStream, vol_db: float, pitch: float) -> void:
 	var pl := players[_next]
 	_next = (_next + 1) % VOICES
-	pl.stream = streams[name]
+	pl.stream = s
 	pl.volume_db = vol_db
-	pl.pitch_scale = pitch * randf_range(0.94, 1.06)
+	pl.pitch_scale = pitch
 	pl.play()
 
 ## Plays a sound with simple distance attenuation from the camera.
@@ -49,32 +111,61 @@ func play_at(name: String, pos: Vector2, vol_db: float = 0.0, pitch: float = 1.0
 		return
 	play(name, vol_db - d / 560.0 * 16.0, pitch, 0.045)
 
-func _process(delta: float) -> void:
-	if not loops_ready:
+func _track(name: String) -> AudioStream:
+	if not tracks.has(name):
+		var s = load(MUSIC[name]) if MUSIC.has(name) else null
+		if s is AudioStreamOggVorbis:
+			s.loop = true
+		elif s is AudioStreamWAV:
+			s.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			s.loop_begin = 0
+			s.loop_end = int(s.get_length() * s.mix_rate)
+		tracks[name] = s
+	return tracks[name]
+
+## Crossfades to a music track ("title", "battle", "boss"); "" fades out.
+func play_music(name: String) -> void:
+	if name == mus_cur:
 		return
-	var target_int := 0.0 if not music_on else intensity
-	var mi: AudioStreamPlayer = music["drums_hi"]
-	var want := linear_to_db(clamp(target_int, 0.0001, 1.0)) - 4.0
-	mi.volume_db = lerp(mi.volume_db, want, clamp(delta * 2.0, 0.0, 1.0))
-	var mb: AudioStreamPlayer = music["boss"]
-	var mbase: AudioStreamPlayer = music["drums"]
-	var bwant := -3.0 if (boss_mode and music_on) else -60.0
-	mb.volume_db = lerp(mb.volume_db, bwant, clamp(delta * 1.5, 0.0, 1.0))
-	var dwant := -7.0 if (music_on and not boss_mode) else -60.0
-	mbase.volume_db = lerp(mbase.volume_db, dwant, clamp(delta * 1.5, 0.0, 1.0))
+	mus_cur = name
+	var tmp := mus_a
+	mus_a = mus_b
+	mus_b = tmp
+	mus_fade = 0.0
+	if name != "":
+		mus_a.stream = _track(name)
+		mus_a.volume_db = -40.0
+		mus_a.play()
+
+func _process(delta: float) -> void:
+	# music: crossfade, the boss theme takes over while the general fights
+	if want_music:
+		play_music("boss" if boss_mode else "battle")
+	mus_fade = minf(1.0, mus_fade + delta / 1.8)
+	var base := -9.0 + intensity * 2.0 if music_on else -60.0
+	if mus_cur != "" and mus_a.playing:
+		mus_a.volume_db = lerpf(-40.0, base, mus_fade)
+	if mus_b.playing:
+		mus_b.volume_db = lerpf(mus_b.volume_db, -60.0, minf(1.0, delta * 1.6))
+		if mus_b.volume_db < -55.0:
+			mus_b.stop()
 
 func start_music() -> void:
 	want_music = true
-	if not loops_ready:
-		return
-	for k in music.keys():
-		var pl: AudioStreamPlayer = music[k]
-		if not pl.playing:
-			pl.play()
+	if loops_ready:
+		for k in ["wind", "ambience"]:
+			if music.has(k) and not music[k].playing:
+				music[k].play()
 
 func stop_music() -> void:
-	for k in music.keys():
-		music[k].stop()
+	want_music = false
+	play_music("")
+
+## Menu music (title screen, campaign map).
+func menu_music() -> void:
+	want_music = false
+	boss_mode = false
+	play_music("title")
 
 # ------------------------------------------------------------------ building blocks
 func _buf(dur: float) -> PackedFloat32Array:

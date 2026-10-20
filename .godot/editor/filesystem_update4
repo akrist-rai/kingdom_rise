@@ -1,0 +1,16 @@
+res://scripts/main.gd
+res://scripts/combat/unit.gd
+res://scripts/core/art.gd
+res://scripts/core/unit_art.gd
+res://scripts/strategy/formation_director.gd
+res://scripts/ui/hud.gd
+res://scripts/ui/title.gd
+res://scripts/world/atmos.gd
+res://scripts/world/battle.gd
+res://scripts/world/decals.gd
+res://scripts/world/fx.gd
+res://scripts/world/scenery.gd
+res://scripts/world/shadow_layer.gd
+res://scripts/world/siege.gd
+res://scripts/world/siege_props.gd
+res://scripts/world/world_builder.gd

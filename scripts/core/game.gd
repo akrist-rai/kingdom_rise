@@ -107,30 +107,31 @@ func _ready() -> void:
 # ------------------------------------------------------------------ typography
 ## UI code passes the sizes it used with the old pixel fonts (8 = body, 9 x scale = display);
 ## these factors map them to the smooth font so the layout keeps its proportions.
-const BODY_K := 1.3
-const TITLE_K := 1.4
+const BODY_K := 1.7
+const TITLE_K := 1.3
 const TEXT_INK := Color(0.02, 0.05, 0.07, 0.92)
 
 func _make_fonts() -> void:
-	var base: Font = ThemeDB.fallback_font
+	# Barlow Condensed (OFL) for interface text, Cinzel (OFL) for display titles.
+	var barlow_sb: Font = load("res://assets/fonts/BarlowCondensed-SemiBold.ttf")
+	var barlow_md: Font = load("res://assets/fonts/BarlowCondensed-Medium.ttf")
+	var cinzel: Font = load("res://assets/fonts/Cinzel-Variable.ttf")
+	var fallback: Font = ThemeDB.fallback_font
 	var body := FontVariation.new()
-	body.base_font = base
-	body.variation_embolden = 0.45
+	body.base_font = barlow_sb if barlow_sb else fallback
 	body.set_spacing(TextServer.SPACING_GLYPH, 0)
 	font = body
 	var title := FontVariation.new()
-	title.base_font = base
-	title.variation_embolden = 1.2
+	title.base_font = cinzel if cinzel else fallback
+	title.variation_opentype = {"weight": 700}
 	title.set_spacing(TextServer.SPACING_GLYPH, 2)
 	font_title = title
 	var plain := FontVariation.new()
-	plain.base_font = base
-	plain.variation_embolden = 0.2
+	plain.base_font = barlow_md if barlow_md else fallback
 	font_plain = plain
 	var it := FontVariation.new()
-	it.base_font = base
-	it.variation_embolden = 0.1
-	it.variation_transform = Transform2D(Vector2(1.0, 0.0), Vector2(-0.22, 1.0), Vector2.ZERO)
+	it.base_font = barlow_md if barlow_md else fallback
+	it.variation_transform = Transform2D(Vector2(1.0, 0.0), Vector2(-0.2, 1.0), Vector2.ZERO)
 	font_italic = it
 
 func text_size(sz: int, kind: int = 0) -> int:

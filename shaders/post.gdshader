@@ -45,12 +45,14 @@ uniform float hurt = 0.0;
 uniform float ink = 0.0;
 uniform float impact = 0.0;
 uniform float impact_invert = 0.0;
+uniform vec2 impact_pos = vec2(0.5, 0.5);
 uniform float ca = 0.0;
 uniform float flash = 0.0;
 uniform vec3 flash_col = vec3(1.0, 0.95, 0.9);
 uniform float letterbox = 0.0;
 uniform float blizzard = 0.0;
 uniform float blur = 0.0;
+uniform float tilt = 0.0;      // tilt-shift: soft focus toward the top and bottom of the frame (miniature look)
 
 float lum(vec3 c) {
 	return dot(c, vec3(0.299, 0.587, 0.114));
@@ -94,6 +96,11 @@ void fragment() {
 		scene.b = textureLod(screen_tex, uv - dir, 0.0).b;
 	} else {
 		scene = textureLod(screen_tex, uv, 0.0).rgb;
+	}
+	float tb = tilt * (smoothstep(0.34, 0.0, uv.y) + smoothstep(0.72, 1.0, uv.y) * 0.7);
+	if (tb > 0.002) {
+		vec3 soft = textureLod(screen_tex, uv, 1.2 + tb * 1.6).rgb;
+		scene = mix(scene, soft, clamp(tb, 0.0, 1.0));
 	}
 	if (blur > 0.001) {
 		scene = mix(scene, textureLod(screen_tex, uv, 2.2).rgb, blur);
@@ -198,16 +205,17 @@ void fragment() {
 		col = mix(col, ic, clamp(ink * 1.2, 0.0, 1.0) * (1.0 - seep * (1.0 - ink)));
 	}
 
-	// --- manga impact frame: two-tone ink with red accents
+	// --- impact: a radial zoom blur toward the blow, a contrast pump and warm bloom
 	if (impact > 0.001) {
-		float il = lum(raw * (ambient + L));
-		float th = step(0.48, il);
-		if (impact_invert > 0.5) {
-			th = 1.0 - th;
+		vec2 dir = uv - impact_pos;
+		vec3 acc = vec3(0.0);
+		for (int i = 0; i < 10; i++) {
+			float k = float(i) / 9.0;
+			acc += textureLod(screen_tex, uv - dir * k * 0.09 * impact, 0.0).rgb;
 		}
-		vec3 ic = mix(vec3(0.03, 0.02, 0.04), vec3(0.98, 0.95, 0.88), th);
-		ic = mix(ic, vec3(0.9, 0.08, 0.08), red_mask(raw));
-		col = mix(col, ic, impact);
+		vec3 zb = acc / 10.0 * (ambient + L * light_gain);
+		zb = (zb - 0.5) * 1.25 + 0.5;
+		col = mix(col, zb * vec3(1.08, 1.0, 0.92) + vec3(0.06, 0.04, 0.02), impact * 0.85);
 	}
 
 	col = mix(col, flash_col, flash);

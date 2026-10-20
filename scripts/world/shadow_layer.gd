@@ -41,9 +41,9 @@ func add_static(t: Texture2D, pos: Vector2, offset: Vector2, flip: bool = false,
 	s.transform = proj(sv, pos, 1.0, k)
 	return s
 
-func add_crowd(c: Node2D) -> void:
-	crowds.append(c)
-	crowd_drawer.queue_redraw()
+## Crowds of baked figures cast no long shadows (kept for the API).
+func add_crowd(_c: Node2D) -> void:
+	pass
 
 func set_sun(v: Vector2, col: Color, alpha: float) -> void:
 	sv = v

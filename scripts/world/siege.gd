@@ -296,10 +296,8 @@ func populate(battle) -> void:
 	_build_city(rng)
 	_build_palace(rng)
 	_build_field(rng)
-	var landscape := GoldenLandscape.new()
-	b.add_child(landscape)
-	b.move_child(landscape, b.world.get_index())
-	landscape.setup(b)
+	_dress_field(rng)
+	_dress_city(rng)
 	fx_node = SiegeProps.SiegeFx.new()
 	fx_node.lv = self
 	b.high.add_child(fx_node)
@@ -474,7 +472,7 @@ func _build_city(rng: RandomNumberGenerator) -> void:
 		WorldBuilder.prop(b.world, "brazier", p, false, b.shadows)
 		WorldBuilder.fire(b, p + Vector2(0, -6), 0)
 	for p in [Vector2(1000, 1650), Vector2(415, 1530), Vector2(1780, 1180), Vector2(560, 1170), Vector2(1450, 1530), Vector2(1250, 1110)]:
-		WorldBuilder.prop(b.world, "wreck_cart", p, rng.randf() < 0.5, b.shadows)
+		_wreck(p, rng)
 		WorldBuilder.fire(b, p + Vector2(0, -3), 1)
 		b.decals.scorch(p, 24.0)
 
@@ -497,24 +495,39 @@ func _fill_block(r: Rect2, rng: RandomNumberGenerator) -> void:
 			rects.append(Rect2(c.position.x, c.position.y + dn, ww, c.size.y - dn - ds))
 			rects.append(Rect2(c.end.x - ww, c.position.y + dn, ww, c.size.y - dn - ds))
 			var court := Rect2(c.position.x + ww, c.position.y + dn, c.size.x - ww * 2.0, c.size.y - dn - ds)
-			var tree := WorldBuilder.prop(b.world, "pine" if rng.randf() < 0.6 else "dead_tree", court.get_center() + Vector2(0, court.size.y * 0.3))
-			tree.modulate = Color(0.8, 0.75, 0.9)
+			b.scenery.prop(["autumn_1", "autumn_3", "oak_2", "autumn_5"][rng.randi() % 4], court.get_center() + Vector2(0, court.size.y * 0.3), {"scale": 0.75, "sway": "tree"})
+			for k in 3:
+				b.scenery.prop(["bush_1", "bush_2", "fern"][rng.randi() % 3], court.get_center() + Vector2(rng.randf_range(-court.size.x, court.size.x) * 0.35, rng.randf_range(-6, 14)), {"scale": 0.8, "sway": "bush", "shadow": false})
 			x += cw
 	else:
 		var half := r.size.y * rng.randf_range(0.45, 0.55)
 		_split_row(rects, Rect2(r.position.x, r.position.y, r.size.x, half), rng)
 		_split_row(rects, Rect2(r.position.x, r.position.y + half, r.size.x, r.size.y - half), rng)
 	for hr in rects:
-		var h := SiegeProps.House.new()
-		h.setup(b, hr, rng.randi())
+		var h := Scenery.Building.new()
+		h.setup(b, hr, _house_kind(hr, rng), b.scenery)
 		var near_wall := clampf((hr.position.y - 1000.0) / 700.0, 0.0, 1.0)
 		if rng.randf() < 0.15 + near_wall * 0.2:
 			h.charred = rng.randf_range(0.4, 0.9)
 			h.glow = 0.0
+			if h.has_method("queue_redraw_house"):
+				h.queue_redraw_house()
 		b.world.add_child(h)
 		houses.append(h)
 		if h.charred > 0.0 or rng.randf() < 0.12:
 			_ignite(h, rng.randf() < 0.5)
+
+## Which baked building stands on a lot: cottages on narrow lots, taverns, smithies and
+## barracks on wide ones; mostly blue Crown roofs, some red, the odd ruin near the wall.
+func _house_kind(r: Rect2, rng: RandomNumberGenerator) -> String:
+	var w := r.size.x
+	if r.position.y > 1500.0 and rng.randf() < 0.12:
+		return "ruin"
+	if w < 72.0:
+		return ["house_a_blue", "house_b_blue", "house_a_blue", "house_b_blue", "house_a_red", "house_b_red"][rng.randi() % 6]
+	if w < 110.0:
+		return ["house_a_blue", "house_b_blue", "tavern_blue", "smithy_blue", "house_b_red", "market_blue"][rng.randi() % 6]
+	return ["tavern_blue", "barracks_red", "market_blue", "smithy_blue", "house_b_blue"][rng.randi() % 5]
 
 func _split_row(out: Array, r: Rect2, rng: RandomNumberGenerator) -> void:
 	var x := r.position.x
@@ -531,10 +544,15 @@ func _ignite(h, big: bool = false) -> void:
 		return
 	h.burning = true
 	h.charred = maxf(h.charred, 0.35)
-	h.queue_redraw()
+	if h.has_method("queue_redraw_house"):
+		h.queue_redraw_house()
+	else:
+		h.queue_redraw()
 	fires_lit += 1
 	var r: Rect2 = h.rect
 	var roof_c := Vector2(r.get_center().x, r.end.y - h.fh - r.size.y * 0.55)
+	if h.has_method("roof_point"):
+		roof_c = h.roof_point()
 	WorldBuilder.fire(b, roof_c, 2 if big else 1, b.high)
 	b.hazards.pop_back()
 	b.atmos.add_light(Vector2(r.get_center().x, r.end.y), 110.0 if big else 80.0, Color(1.0, 0.48, 0.2) * 0.5, 0.3)
@@ -572,18 +590,19 @@ func _build_palace(rng: RandomNumberGenerator) -> void:
 	b.atmos.add_light(Vector2(1100, TERRACE_Y1 - 20.0), 120.0, Color(1.0, 0.62, 0.32) * 0.45, 0.06)
 	# the hall and the side halls, facing south over the courtyard
 	T.add(HALL)
-	var hall := MedievalProps.Keep.new()
-	hall.setup(b, HALL)
+	var hall := Scenery.Building.new()
+	hall.setup(b, HALL, "castle_blue", b.scenery)
 	b.world.add_child(hall)
 	b.atmos.add_light(Vector2(HALL.get_center().x, HALL.end.y + 10.0), 200.0, Color(1.0, 0.7, 0.4) * 0.6, 0.05)
 	for sh in SIDE_HALLS:
 		T.add(sh)
-		var h := SiegeProps.House.new()
-		h.setup(b, sh, 500 + int(sh.position.x))
-		h.ornate = true
-		h.storeys = 2
-		h.fh = 36.0
-		b.world.add_child(h)
+		# a tower, a hall and a tower on each side of the courtyard
+		var parts := [[0.0, 0.24, "tower_b_blue"], [0.24, 0.76, "church_blue"], [0.76, 1.0, "tower_a_blue"]]
+		for pt in parts:
+			var r := Rect2(sh.position.x + sh.size.x * pt[0], sh.position.y, sh.size.x * (pt[1] - pt[0]), sh.size.y)
+			var h := Scenery.Building.new()
+			h.setup(b, r, pt[2], b.scenery)
+			b.world.add_child(h)
 		b.atmos.add_light(Vector2(sh.get_center().x, sh.end.y), 120.0, Color(1.0, 0.66, 0.36) * 0.4, 0.05)
 	# braziers lining the imperial way, bronze cauldrons, guardian lions
 	for k in 5:
@@ -610,8 +629,7 @@ func _build_palace(rng: RandomNumberGenerator) -> void:
 		var tp := Vector2(260.0 + k * 240.0 + (60.0 if k >= 4 else 0.0), 760.0)
 		if absf(tp.x - 1100.0) < 140.0:
 			continue
-		var tree := WorldBuilder.prop(b.world, "pine", tp, false, b.shadows)
-		tree.modulate = Color(0.85, 0.8, 0.95)
+		b.scenery.prop(["pine_1", "pine_2", "pine_4"][k % 3], tp, {"scale": 0.9, "sway": "tree", "solid": Rect2(-5, -3, 10, 6)})
 	var pf := SiegeProps.PennantRow.new()
 	b.high.add_child(pf)
 	for k in 8:
@@ -627,20 +645,19 @@ func _build_field(rng: RandomNumberGenerator) -> void:
 		front.add_row("qin", -200.0, Battle.W + 200.0, Battle.BOT + 8.0 + row * 10.0, 7.0, 1.4, rng, 8 if row == 0 else 0)
 	front.finish()
 	WorldBuilder.light_torches(b, front)
-	# the camp: tents, braziers, banners
-	for i in 26:
-		var tp := Vector2(rng.randf_range(40, Battle.W - 40), rng.randf_range(2490, 2550))
-		if absf(tp.x - START.x) < 80.0:
+	# the camp: braziers between the tents (the tents themselves are placed by _dress_field)
+	for i in 12:
+		var bp := Vector2(rng.randf_range(80, Battle.W - 80), rng.randf_range(2500, 2550))
+		if absf(bp.x - START.x) < 90.0:
 			continue
-		WorldBuilder.prop(b.world, "tent_qin", tp, rng.randf() < 0.5, b.shadows)
-		if rng.randf() < 0.5:
-			var bp := tp + Vector2(rng.randf_range(24, 36), rng.randf_range(4, 12))
-			WorldBuilder.prop(b.world, "brazier", bp, false, b.shadows)
-			WorldBuilder.fire(b, bp + Vector2(0, -6), 0)
-	for i in 14:
-		var bp := Vector2(rng.randf_range(60, Battle.W - 60), rng.randf_range(2440, 2530))
-		var s := WorldBuilder.prop(b.world, "gbanner_qin_0" if i % 3 == 0 else "banner_qin_0", bp, false, b.shadows)
-		b.banners.append([s, "qin", rng.randi() % 3, i % 3 == 0])
+		WorldBuilder.prop(b.world, "brazier", bp, false, b.shadows)
+		WorldBuilder.fire(b, bp + Vector2(0, -6), 0)
+	# war banners along the rear of the March lines
+	for i in 12:
+		var bp := Vector2(rng.randf_range(60, Battle.W - 60), rng.randf_range(2470, 2550))
+		if absf(bp.x - START.x) < 70.0:
+			continue
+		b.scenery.banner(bp, Color("#b8282a"), rng.randf_range(54.0, 66.0))
 	# trebuchets, siege towers and the ram
 	for tx in [380.0, 1100.0, 1820.0]:
 		var tr := SiegeProps.Trebuchet.new()
@@ -670,7 +687,10 @@ func _build_field(rng: RandomNumberGenerator) -> void:
 		if k < 4:
 			b.decals.stamp(Art.tex["arrow_stuck"], p, rng.randf() < 0.5, Color.WHITE)
 		elif k < 6:
-			WorldBuilder.prop(b.world, ["sword_stuck", "spear_stuck", "rock1"][rng.randi() % 3], p, rng.randf() < 0.5, b.shadows)
+			if rng.randf() < 0.5:
+				WorldBuilder.prop(b.world, ["sword_stuck", "spear_stuck"][rng.randi() % 2], p, rng.randf() < 0.5, b.shadows)
+			else:
+				b.scenery.prop("rock_%d" % (1 + rng.randi() % 3), p, {"scale": rng.randf_range(0.4, 0.7)})
 		elif k < 7:
 			WorldBuilder.prop(b.world, "shield_drop", p, rng.randf() < 0.5)
 		elif k < 8 and p.y < 2250.0:
@@ -679,12 +699,120 @@ func _build_field(rng: RandomNumberGenerator) -> void:
 		else:
 			b.decals.scorch(p, rng.randf_range(10.0, 22.0))
 	for p in [Vector2(300, 2180), Vector2(880, 2120), Vector2(1460, 2240), Vector2(1960, 2150), Vector2(560, 2330)]:
-		WorldBuilder.prop(b.world, "wreck_tower" if p.y < 2200.0 else "wreck_cart", p, rng.randf() < 0.5, b.shadows)
+		_wreck(p, rng)
 		WorldBuilder.fire(b, p + Vector2(0, -2), 1)
 		b.decals.scorch(p, 26.0)
 	# arrows stuck all over the foot of the wall
 	for i in 60:
 		b.decals.stamp(Art.tex["arrow_stuck"], Vector2(rng.randf_range(40, Battle.W - 40), rng.randf_range(GROUND_Y + 6.0, GROUND_Y + 60.0)), rng.randf() < 0.5, Color.WHITE)
+
+## The field before the walls, dressed with baked scenery: forest edges, lone oaks, the March
+## camp, bushes and thousands of grass tufts, flowers and pebbles.
+func _road_dist(p: Vector2) -> float:
+	var d1 := absf(p.x - (1100.0 + sin(p.y * 0.007) * 32.0))
+	var d2 := absf(p.y - 2310.0 - sin(p.x * 0.007) * 28.0)
+	return minf(d1, d2 * 1.6)
+
+func _dress_field(rng: RandomNumberGenerator) -> void:
+	var S: Scenery = b.scenery
+	var y0 := GROUND_Y + 30.0
+	var y1 := Battle.BOT + 120.0
+	var trees := ["oak_1", "oak_2", "oak_3", "oak_4", "oak_5", "oak_1b", "oak_3b", "pine_1", "pine_3", "pine_4"]
+	# forest edges, beyond the playable sides
+	for side in [-1.0, 1.0]:
+		var x0 := -260.0 if side < 0 else Battle.W - 10.0
+		var x1 := 10.0 if side < 0 else Battle.W + 260.0
+		var y := y0 - 60.0
+		while y < y1:
+			var p := Vector2(rng.randf_range(x0, x1), y + rng.randf_range(-12, 12))
+			S.prop(trees[rng.randi() % trees.size()], p, {"scale": rng.randf_range(0.85, 1.2), "sway": "tree"})
+			if rng.randf() < 0.7:
+				S.prop(["bush_2", "bush_2", "fern", "plant_1b"][rng.randi() % 4], p + Vector2(rng.randf_range(-30, 30), rng.randf_range(6, 20)), {"scale": rng.randf_range(0.9, 1.4), "sway": "bush"})
+			y += rng.randf_range(16, 30)
+	# lone oaks in the field (trunks are solid)
+	for p in [Vector2(300, 2380), Vector2(1990, 2470), Vector2(1355, 2160), Vector2(860, 2400), Vector2(1760, 2290), Vector2(150, 2120), Vector2(2060, 2100)]:
+		S.prop(trees[rng.randi() % 7], p, {"scale": rng.randf_range(1.0, 1.25), "sway": "tree", "solid": Rect2(-6, -3, 12, 6)})
+		for k in 4:
+			var q: Vector2 = p + Vector2(rng.randf_range(-34, 34), rng.randf_range(-6, 18))
+			S.prop(["bush_2", "fern", "plant_1b", "plant_7b", "fern"][rng.randi() % 5], q, {"scale": rng.randf_range(0.8, 1.2), "sway": "bush"})
+		for k in 6:
+			S.clutter(["mushroom_1", "mushroom_2", "clover_1", "flowers_1"][rng.randi() % 4], p + Vector2(rng.randf_range(-40, 40), rng.randf_range(-10, 24)), rng.randf_range(0.8, 1.2))
+	# boulders and rocks
+	for i in 14:
+		var p := Vector2(rng.randf_range(80, Battle.W - 80), rng.randf_range(y0 + 20.0, Battle.BOT - 40.0))
+		if _road_dist(p) < 90.0 or _machine_lane(p):
+			continue
+		var big := rng.randf() < 0.35
+		S.prop(("boulder_%d" % (1 + rng.randi() % 3)) if big else ("rock_%d" % (1 + rng.randi() % 3)), p,
+			{"scale": rng.randf_range(0.8, 1.15), "solid": Rect2(-10, -4, 20, 8) if big else null})
+	# the March camp along the bottom edge (beyond where reinforcements form up)
+	var x := 30.0
+	while x < Battle.W:
+		if absf(x - 1100.0) > 110.0:
+			var tp := Vector2(x + rng.randf_range(-10, 10), Battle.BOT + rng.randf_range(34, 70))
+			S.prop("tent" if rng.randf() < 0.6 else "tent_b", tp, {"scale": rng.randf_range(0.95, 1.15)})
+			for k in rng.randi_range(1, 3):
+				var q := tp + Vector2(rng.randf_range(-36, 36), rng.randf_range(-26, -8))
+				S.prop(["barrel", "crate_a", "crate_b", "sack", "arrows", "weaponrack", "lumber", "cart", "crates_long"][rng.randi() % 9], q, {"scale": rng.randf_range(0.9, 1.1)})
+			if rng.randf() < 0.35:
+				S.banner(tp + Vector2(rng.randf_range(-30, 30), rng.randf_range(-30, -14)), Color("#b8282a"))
+		x += rng.randf_range(70, 110)
+	# undergrowth along the field edges and the foot of the wall
+	for i in 140:
+		var edge := rng.randf() < 0.5
+		var p := Vector2(rng.randf_range(20, 140) if edge else rng.randf_range(Battle.W - 140, Battle.W - 20), rng.randf_range(y0, Battle.BOT))
+		if rng.randf() < 0.3:
+			p = Vector2(rng.randf_range(40, Battle.W - 40), rng.randf_range(GROUND_Y + 14.0, GROUND_Y + 50.0))
+			if _road_dist(p) < 70.0 or _machine_lane(p):
+				continue
+		S.prop(["bush_2", "fern", "plant_1b", "plant_7b", "grass_4", "grass_2", "fern", "bush_2"][rng.randi() % 8], p, {"scale": rng.randf_range(0.8, 1.3), "sway": "bush", "shadow": rng.randf() < 0.5})
+	# ground clutter: grass, flowers, clover, pebbles; path stones and pebbles along the road
+	var field := Rect2(-260, y0 - 20.0, Battle.W + 520, y1 - y0 + 20.0)
+	var avoid_road := func(p: Vector2) -> bool: return _road_dist(p) < 50.0 + randf() * 20.0
+	var tint := Color(0.86, 0.9, 0.8)
+	S.scatter_clumps(field, 900, Vector2i(3, 9), 22.0, ["grass_1", "grass_1", "grass_2", "clover_1", "clover_2", "grass_3"], rng, avoid_road, Vector2(0.7, 1.2), tint)
+	S.scatter(field, 1200, ["grass_1", "grass_2", "clover_1"], rng, avoid_road, Vector2(0.6, 1.0), tint)
+	S.scatter_clumps(field, 150, Vector2i(3, 7), 18.0, ["flowers_1", "flowers_2", "flower_1", "flower_2"], rng, avoid_road, Vector2(0.6, 1.0))
+	S.scatter_clumps(field, 70, Vector2i(2, 5), 14.0, ["pebble_1", "pebble_2", "pebble_3", "pebble_4"], rng, Callable(), Vector2(0.6, 1.0), Color(0.9, 0.88, 0.84))
+	var road_only := func(p: Vector2) -> bool: return _road_dist(p) > 52.0
+	S.scatter_clumps(field, 260, Vector2i(2, 5), 16.0, ["pebble_1", "pebble_2", "pebble_3", "pebble_4", "path_2", "path_4"], rng, road_only, Vector2(0.5, 0.9), Color(0.9, 0.86, 0.8))
+
+## A wrecked cart or engine: scattered lumber, crates and barrels around a fire.
+func _wreck(p: Vector2, rng: RandomNumberGenerator) -> void:
+	var S: Scenery = b.scenery
+	S.prop(["lumber", "crates_long", "cart", "lumber"][rng.randi() % 4], p, {"scale": rng.randf_range(0.9, 1.15), "mod": Color(0.62, 0.55, 0.5)})
+	for k in rng.randi_range(1, 3):
+		S.prop(["barrel", "crate_b", "sack", "lumber"][rng.randi() % 4], p + Vector2(rng.randf_range(-22, 22), rng.randf_range(-6, 12)), {"scale": rng.randf_range(0.8, 1.0), "mod": Color(0.6, 0.54, 0.5)})
+
+## Columns kept clear for the siege machines, the ram and the formed companies.
+func _machine_lane(p: Vector2) -> bool:
+	for x in DOCKS_X:
+		if absf(p.x - x) < 70.0:
+			return true
+	for t in [Vector2(380, 2450), Vector2(1100, 2475), Vector2(1820, 2450)]:
+		if p.distance_to(t) < 90.0:
+			return true
+	return absf(p.x - 1100.0) < 80.0
+
+## Trees and greenery in the city's courtyards and the palace gardens.
+func _dress_city(rng: RandomNumberGenerator) -> void:
+	var S: Scenery = b.scenery
+	var trees := ["autumn_1", "autumn_2", "autumn_3", "autumn_4", "autumn_5", "oak_2", "oak_4"]
+	var placed := 0
+	var tries := 0
+	while placed < 34 and tries < 400:
+		tries += 1
+		var p := Vector2(rng.randf_range(50, Battle.W - 50), rng.randf_range(860, 1720))
+		if b.terrain.solid_at(p, 34.0) or absf(p.x - 1100.0) < 70.0 or (p.y > CANAL.position.y - 30.0 and p.y < CANAL.end.y + 30.0):
+			continue
+		S.prop(trees[rng.randi() % trees.size()], p, {"scale": rng.randf_range(0.7, 0.95), "sway": "tree", "solid": Rect2(-5, -3, 10, 6)})
+		for k in 2:
+			S.prop(["bush_1", "bush_2", "fern"][rng.randi() % 3], p + Vector2(rng.randf_range(-24, 24), rng.randf_range(4, 14)), {"scale": rng.randf_range(0.7, 1.0), "sway": "bush", "shadow": false})
+		placed += 1
+	# weeds and moss between the flagstones
+	var city := Rect2(0, 760, Battle.W, GROUND_Y - 790.0)
+	var avoid := func(p: Vector2) -> bool: return b.terrain.solid_at(p, 4.0) or absf(p.x - 1100.0) < 50.0
+	S.scatter(city, 900, ["grass_1", "grass_3", "clover_1", "clover_2", "pebble_2"], rng, avoid, Vector2(0.5, 0.9), Color(0.85, 0.9, 0.8))
 
 # ------------------------------------------------------------------ armies
 func deploy(battle) -> void:

@@ -44,6 +44,11 @@ func setup(u: Unit) -> void:
 			role = "melee"
 
 func think(u: Unit, delta: float) -> void:
+	var _b0 := Time.get_ticks_usec()
+	_think(u, delta)
+	Prof.add("ai." + role, Time.get_ticks_usec() - _b0)
+
+func _think(u: Unit, delta: float) -> void:
 	u.i_move = Vector2.ZERO
 	u.i_guard = false
 	u.i_goal = Vector2.INF
@@ -68,7 +73,13 @@ func think(u: Unit, delta: float) -> void:
 		return
 	if think_t <= 0.0:
 		think_t = randf_range(0.25, 0.5)
-		_retarget(u)
+		# engaged soldiers keep their opponent and look around less often
+		if target != null and is_instance_valid(target) and not target.dead and not target.spectator and u.global_position.distance_squared_to(target.global_position) < 4900.0 and not u.in_squad:
+			think_t = randf_range(0.7, 1.1)
+		else:
+			var _r0 := Time.get_ticks_usec()
+			_retarget(u)
+			Prof.add("ai.retarget", Time.get_ticks_usec() - _r0)
 		if strafe_t <= 0.0:
 			strafe_t = randf_range(1.0, 2.5)
 			strafe = -strafe

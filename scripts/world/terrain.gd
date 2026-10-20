@@ -47,8 +47,13 @@ func is_active(tag: String) -> bool:
 static func _key(cx: int, cy: int) -> int:
 	return cx * 4096 + cy
 
+## Rects are indexed grown by the largest soldier radius, so a single cell lookup finds every
+## solid a soldier standing in it could touch.
+const PAD := 14.0
+const EMPTY: Array = []
+
 func _index(i: int) -> void:
-	var r: Rect2 = rects[i][0]
+	var r: Rect2 = (rects[i][0] as Rect2).grow(PAD)
 	for cx in range(int(floor(r.position.x / CELL)), int(floor(r.end.x / CELL)) + 1):
 		for cy in range(int(floor(r.position.y / CELL)), int(floor(r.end.y / CELL)) + 1):
 			var k := _key(cx, cy)
@@ -58,15 +63,7 @@ func _index(i: int) -> void:
 				grid[k] = [i]
 
 func _near(p: Vector2) -> Array:
-	var out: Array = []
-	var cx := int(floor(p.x / CELL))
-	var cy := int(floor(p.y / CELL))
-	for dx in [-1, 0, 1]:
-		for dy in [-1, 0, 1]:
-			var k := _key(cx + dx, cy + dy)
-			if grid.has(k):
-				out.append_array(grid[k])
-	return out
+	return grid.get(_key(int(floor(p.x / CELL)), int(floor(p.y / CELL))), EMPTY)
 
 ## Pushes a circle of radius `rad` at `p` out of any solid it overlaps.
 func push_out(p: Vector2, rad: float) -> Vector2:

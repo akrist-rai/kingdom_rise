@@ -16,13 +16,13 @@ extends Node2D
 enum St { IDLE, ATTACK, DASH, GUARD, STAGGER, BROKEN, KNOCKDOWN, CRIT, DRINK, SKILL, DEAD, CLASH }
 
 const KIND_STATS := {
-	"infantry": {"hp": 60.0, "poise": 14.0, "stance": 50.0, "speed": 80.0, "xp": 12.0, "skill": 0.15, "aggro": 0.6, "windup": 2.2},
-	"spear": {"hp": 60.0, "poise": 14.0, "stance": 50.0, "speed": 78.0, "xp": 12.0, "skill": 0.15, "aggro": 0.6, "windup": 2.2},
-	"archer": {"hp": 45.0, "poise": 8.0, "stance": 35.0, "speed": 82.0, "xp": 14.0, "skill": 0.1, "aggro": 0.5, "windup": 4.0},
-	"heavy": {"hp": 130.0, "poise": 45.0, "stance": 95.0, "speed": 66.0, "xp": 28.0, "skill": 0.25, "aggro": 0.6, "windup": 1.5},
-	"cavalry": {"hp": 140.0, "poise": 60.0, "stance": 90.0, "speed": 175.0, "xp": 32.0, "skill": 0.1, "aggro": 0.8, "windup": 1.4},
+	"infantry": {"hp": 42.0, "poise": 14.0, "stance": 50.0, "speed": 80.0, "xp": 12.0, "skill": 0.15, "aggro": 0.6, "windup": 2.2},
+	"spear": {"hp": 44.0, "poise": 14.0, "stance": 50.0, "speed": 78.0, "xp": 12.0, "skill": 0.15, "aggro": 0.6, "windup": 2.2},
+	"archer": {"hp": 32.0, "poise": 8.0, "stance": 35.0, "speed": 82.0, "xp": 14.0, "skill": 0.1, "aggro": 0.5, "windup": 4.0},
+	"heavy": {"hp": 105.0, "poise": 45.0, "stance": 95.0, "speed": 66.0, "xp": 28.0, "skill": 0.25, "aggro": 0.6, "windup": 1.5},
+	"cavalry": {"hp": 120.0, "poise": 60.0, "stance": 90.0, "speed": 175.0, "xp": 32.0, "skill": 0.1, "aggro": 0.8, "windup": 1.4},
 	"officer": {"hp": 420.0, "poise": 95.0, "stance": 150.0, "speed": 92.0, "xp": 220.0, "skill": 0.55, "aggro": 0.95, "windup": 1.3},
-	"guard": {"hp": 170.0, "poise": 70.0, "stance": 110.0, "speed": 82.0, "xp": 45.0, "skill": 0.35, "aggro": 0.8, "windup": 1.45},
+	"guard": {"hp": 150.0, "poise": 70.0, "stance": 110.0, "speed": 82.0, "xp": 45.0, "skill": 0.35, "aggro": 0.8, "windup": 1.45},
 	"general": {"hp": 2200.0, "poise": 120.0, "stance": 300.0, "speed": 100.0, "xp": 1500.0, "skill": 0.5, "aggro": 1.0, "windup": 1.0},
 }
 const KIND_LABEL := {"infantry": "INFANTRY", "spear": "SPEARMAN", "archer": "ARCHER", "heavy": "HEAVY INFANTRY",
@@ -98,6 +98,10 @@ var hyper := false
 var buff_t := 0.0
 var buff_mult := 1.0
 var dead := false
+var lod_tick := true         # false: far from the camera, this frame is skipped (time accumulates)
+var lod_acc := 0.0
+var brain_tick := true       # false: this frame the AI keeps its last decision (time accumulates)
+var brain_acc := 0.0
 var death_t := 0.0
 var hit_flash := 0.0
 var show_bar_t := 0.0
@@ -178,25 +182,52 @@ var nav_goal := Vector2.INF
 var queued := ""
 var queued_t := 0.0
 
-# Visuals
-var frames: Dictionary
+# Visuals: baked 3D-rendered sprites (UnitArt). The body and the weapon are two layers on one
+# rig; the rig carries squash / lean / hop, the sprites only swap atlas frames.
+var rig: Node2D
+var horse_spr: Sprite2D
+var seat := Vector2.ZERO      # rider offset on horseback (rig pixels)
 var body: Sprite2D
 var wpn: Sprite2D
-var wpn2: Sprite2D
-var shield_spr: Sprite2D
-var shadow: Sprite2D
-var sh_body: Sprite2D
-var sh_wpn: Sprite2D
-var cape: Cape = null
-const CAPE_SEG := 3.0
-const CAPE_PLAYER := [Color("#ff6a55"), Color("#c3262f"), Color("#6e1220"), Color("#f1c35c")]
-const CAPE_GENERAL := [Color("#b884f0"), Color("#6a35a8"), Color("#2f1450"), Color("#e6cf8f")]
+var body_sheet := ""
+var wpn_sheet := ""
+var aset := "1h"
+var palette := "march"
 var anim_t := 0.0
+var anim_ofs := 0.0
 var weapon_angle := 0.0
-var wpn_front := true
 var step_acc := 0.0
-var body_off := Vector2(-10, -22)
 var tint := Color.WHITE
+var dir8 := 2
+var cur_anim := ""
+var cur_frame := 0
+var mv_anim := "a1"
+var run_phase := 0.0
+var guard_hit_t := 0.0
+var on_screen_vis := true
+var base_body_scale := 1.0
+var death_frame_t := 0.0
+const MOVE_ANIMS := {
+	"jian": {"combo": ["a1", "a2", "a3", "a4"], "heavy": "a2", "dash": "a3", "finisher": "a4"},
+	"sword_shield": {"combo": ["a3", "a1", "a4"], "heavy": "a3", "dash": "a3", "finisher": "a4"},
+	"sidearm": {"combo": ["a1", "a2", "a1"], "heavy": "a3", "dash": "a3", "finisher": "a4"},
+	"daggers": {"combo": ["a1", "a2", "a1", "a2", "a1", "a2"], "heavy": "a2", "dash": "a3", "finisher": "a3"},
+	"glaive": {"combo": ["a1", "a1", "a2"], "heavy": "a4", "dash": "a1", "finisher": "a4"},
+	"spear": {"combo": ["a3", "a3", "a1"], "heavy": "a3", "dash": "a3", "finisher": "a4"},
+	"axe": {"combo": ["a1", "a2"], "heavy": "a2", "dash": "a1", "finisher": "a2"},
+	"zhanmadao": {"combo": ["a1", "a1", "a2"], "heavy": "a1", "dash": "a1", "finisher": "a4"},
+	"hammer": {"combo": ["a1", "a1", "a2"], "heavy": "a2", "dash": "a1", "finisher": "a2"},
+	"black_glaive": {"combo": ["a1", "a1", "a2"], "heavy": "a4", "dash": "a3", "finisher": "a4"},
+	"bow": {"combo": ["shoot"], "heavy": "shoot", "dash": "shoot", "finisher": "shoot"},
+	"crossbow": {"combo": ["shoot"], "heavy": "kick", "dash": "shoot", "finisher": "kick"},
+}
+## skill -> [animation, end of wind-up, end of the active part] (seconds); "loop" anims cycle
+const SKILL_ANIMS := {
+	"gale_slash": ["a1", 0.06, 0.22], "tempest": ["spin", 0.0, 99.0], "piercing_charge": ["a3", 0.14, 0.4],
+	"blade_dance": ["a1", 0.0, 99.0], "earthsplitter": ["a2", 0.38, 0.5], "horse_cleaver": ["a1", 0.26, 0.36],
+	"bulwark_rush": ["block", 0.0, 99.0], "arrow_rain": ["aim", 0.3, 0.4], "bolt_storm": ["shoot", 0.15, 0.25],
+	"quake": ["a2", 0.42, 0.55],
+}
 
 # ------------------------------------------------------------------ setup
 func setup(b, fac: int, k: String, w: Weapon) -> void:
@@ -207,7 +238,7 @@ func setup(b, fac: int, k: String, w: Weapon) -> void:
 	mounted = k == "cavalry"
 	is_boss = k == "general"
 	is_officer = k == "officer"
-	radius = 9.0 if mounted else (8.0 if is_boss else 6.0)
+	radius = 10.0 if mounted else (10.0 if is_boss else (8.0 if k in ["heavy", "officer", "guard"] else 7.0))
 	var ks: Dictionary = KIND_STATS[k]
 	max_hp = ks["hp"] * randf_range(0.9, 1.1)
 	hp = max_hp
@@ -220,9 +251,14 @@ func setup(b, fac: int, k: String, w: Weapon) -> void:
 	ai_skill = ks["skill"]
 	ai_aggro = ks["aggro"]
 	_roll_attributes()
-	frames = Art.units[fac_key + "_" + k]
-	if mounted:
-		body_off = Vector2(-17, -31)
+	palette = "march" if fac == 0 else "crown"
+	match k:
+		"officer", "guard":
+			palette = "march_elite" if fac == 0 else "crown_elite"
+		"general":
+			palette = "general"
+	base_body_scale = {"general": 1.42, "officer": 1.18, "guard": 1.1, "heavy": 1.06}.get(k, 1.0)
+	anim_ofs = randf() * 10.0
 	_build_visuals()
 	set_weapon(w)
 	aim = Vector2.RIGHT if faction == 0 else Vector2.LEFT
@@ -260,60 +296,58 @@ func _roll_attributes() -> void:
 			vig += 2
 
 func _build_visuals() -> void:
-	shadow = Sprite2D.new()
-	shadow.texture = Art.tex["shadow_big"] if (mounted or is_boss) else Art.tex["shadow"]
-	shadow.position = Vector2(0, -1)
-	add_child(shadow)
-	wpn = Sprite2D.new()
-	wpn.centered = false
-	add_child(wpn)
-	_add_fist(wpn)
+	base_scale = Vector2.ONE * base_body_scale
+	rig = Node2D.new()
+	add_child(rig)
+	horse_spr = Sprite2D.new()
+	horse_spr.centered = false
+	horse_spr.region_enabled = true
+	horse_spr.visible = false
+	rig.add_child(horse_spr)
 	body = Sprite2D.new()
 	body.centered = false
-	body.offset = body_off
-	body.texture = frames["idle"][0]
-	add_child(body)
-	if is_boss:
-		base_scale = Vector2(1.35, 1.35)
-		body.scale = base_scale
-		shadow.scale = Vector2(1.2, 1.2)
-	if battle != null and battle.shadows != null:
-		sh_body = battle.shadows.add_sprite(body.texture, body_off)
-		sh_wpn = battle.shadows.add_sprite(null, Vector2.ZERO)
+	body.region_enabled = true
+	rig.add_child(body)
+	wpn = Sprite2D.new()
+	wpn.centered = false
+	wpn.region_enabled = true
+	rig.add_child(wpn)
+	_apply_palette()
 
-## The soldier's fist, drawn over the weapon grip (the weapon sprite's origin is its pivot).
-func _add_fist(w: Sprite2D) -> void:
-	var f := Sprite2D.new()
-	f.texture = Art.tex["hand"]
-	w.add_child(f)
+func _apply_palette() -> void:
+	var m: Material = UnitArt.materials.get(palette)
+	body.material = m
+	wpn.material = m
+	horse_spr.material = m
+
+## Body and weapon sheets: on foot by kind and weapon, on horseback the rider sheets.
+func _refresh_sheets() -> void:
+	if weapon == null:
+		return
+	if mounted:
+		body_sheet = UnitArt.rider_sheet(weapon.id)
+		wpn_sheet = UnitArt.rider_weapon_sheet(weapon.id)
+	else:
+		body_sheet = UnitArt.body_sheet(kind, weapon.id)
+		wpn_sheet = UnitArt.weapon_sheet(weapon.id)
+	cur_anim = ""
+	_last_body = null
+	_last_wpn = null
+	if horse_spr:
+		horse_spr.visible = mounted
+	if not mounted and body:
+		body.position = Vector2.ZERO
+		wpn.position = Vector2.ZERO
+		seat = Vector2.ZERO
 
 func set_weapon(w: Weapon) -> void:
 	weapon = w
-	var wd: Dictionary = Art.weapons[w.tex_key]
-	wpn.texture = wd["tex"]
 	weapon_angle = aim.angle() + deg_to_rad(w.rest) * face
-	if wpn2:
-		wpn2.queue_free()
-		wpn2 = null
-	if w.id == "daggers":
-		wpn2 = Sprite2D.new()
-		wpn2.centered = false
-		wpn2.texture = wd["tex"]
-		add_child(wpn2)
-		move_child(wpn2, 1)
-		_add_fist(wpn2)
-	if shield_spr:
-		shield_spr.queue_free()
-		shield_spr = null
-	if w.shield:
-		shield_spr = Sprite2D.new()
-		shield_spr.texture = Art.tex["shield_" + fac_key]
-		add_child(shield_spr)
+	aset = UnitArt.anim_set(w.id)
+	_refresh_sheets()
 	ammo = w.clip
 	reload_t = 0.0
 	combo = 0
-	if is_boss:
-		wpn.scale = Vector2(1.2, 1.2)
 
 ## Called when the player takes control of this body.
 func become_player() -> void:
@@ -344,7 +378,8 @@ func become_player() -> void:
 		invuln = 1.5
 	stamina = max_stamina
 	spirit = maxf(spirit, 30.0)
-	enable_cape(CAPE_PLAYER)
+	palette = "hero"
+	_apply_palette()
 	if mounted:
 		horse_max = 140.0
 		horse_hp = horse_max
@@ -363,17 +398,11 @@ func mount(h_fac: String) -> void:
 		return
 	horse_fac = h_fac
 	mounted = true
-	var key := "qin_%s_m" % kind
-	frames = Art.units[key] if Art.units.has(key) else Art.units["qin_cavalry"]
-	body_off = Vector2(-17, -31)
-	body.offset = body_off
-	radius = 9.0
+	radius = 10.0
 	horse_max = 140.0
 	horse_hp = horse_max
 	base_speed = 210.0 - weapon.weight * 8.0
-	shadow.texture = Art.tex["shadow_big"]
-	if cape != null:
-		cape.reset(_cape_anchor(), face)
+	_refresh_sheets()
 	Sfx.play_at("dash", global_position, -2.0, 0.7)
 
 ## Gets off the horse. thrown = the horse was killed under you.
@@ -383,18 +412,12 @@ func dismount(thrown: bool) -> void:
 	mounted = false
 	if kind == "cavalry":
 		kind = "spear"
-	frames = Art.units[fac_key + "_" + kind]
-	body_off = Vector2(-10, -22)
-	body.offset = body_off
-	radius = 6.0
+	_refresh_sheets()
+	radius = 7.0
 	base_speed = 150.0 - weapon.weight * 8.0
-	shadow.texture = Art.tex["shadow"]
-	if cape != null:
-		cape.reset(_cape_anchor(), face)
 	if battle == null:
 		return
 	if thrown:
-		battle.decals.stamp(Art.units["qin_cavalry"]["dead"], global_position + Vector2(-17, -16), face < 0)
 		battle.decals.blood_pool(global_position, 9.0)
 		battle.fx.text(global_position + Vector2(0, -34), "THROWN FROM THE SADDLE", Color("#ff8c42"))
 		stagger(1.0)
@@ -413,13 +436,21 @@ func kind_label() -> String:
 func _process(delta: float) -> void:
 	if battle == null or battle.frozen:
 		return
-	delta = minf(delta, 1.0 / 30.0)
+	if not lod_tick and not is_player:
+		lod_acc += delta
+		return
+	delta = minf(delta + lod_acc, 0.1 if lod_acc > 0.0 else 1.0 / 30.0)
+	lod_acc = 0.0
 	if dead:
 		_update_dead(delta)
 		return
 	var _p0 := Time.get_ticks_usec()
 	if brain:
-		brain.think(self, delta)
+		if brain_tick or is_player:
+			brain.think(self, delta + brain_acc)
+			brain_acc = 0.0
+		else:
+			brain_acc += delta
 	var _p1 := Time.get_ticks_usec()
 	Prof.add("u.brain", _p1 - _p0)
 	_timers(delta)
@@ -444,7 +475,10 @@ func _process(delta: float) -> void:
 			_st_drink(delta)
 		St.SKILL:
 			Skills.update(self, delta)
+	var _pa := Time.get_ticks_usec()
+	Prof.add("u.states", _pa - _p2)
 	_integrate(delta)
+	Prof.add("u.integrate", Time.get_ticks_usec() - _pa)
 	if flung_t > 0.0:
 		_fling_update(delta)
 	if air_t < air_dur:
@@ -724,6 +758,7 @@ func start_move(m: Dictionary, tag: String) -> void:
 	state = St.ATTACK
 	mv = m
 	mv_kind = tag
+	mv_anim = _move_anim(m, tag)
 	mv_phase = 0
 	mv_t = 0.0
 	mv_hit.clear()
@@ -833,6 +868,27 @@ func _st_attack(delta: float) -> void:
 				combo_reset = 0.45
 				if is_player and i_guard:
 					enter_guard()
+
+## Which baked animation plays a move: per-weapon tables, with kicks, throws and shots special.
+func _move_anim(m: Dictionary, tag: String) -> String:
+	if m.has("anim"):
+		return m["anim"]
+	if m.get("kick", false):
+		return "kick"
+	if m.get("shot", "") == "throw":
+		return "throw"
+	var t: Dictionary = MOVE_ANIMS.get(weapon.id, MOVE_ANIMS["jian"])
+	match tag:
+		"light":
+			var c: Array = t["combo"]
+			return c[posmod(combo - 1, c.size())]
+		"heavy", "counter":
+			return t["heavy"]
+		"dash":
+			return t["dash"]
+		"finisher":
+			return t["finisher"]
+	return "a1"
 
 func _set_wangle(rel: float) -> void:
 	weapon_angle = aim.angle() + rel * face
@@ -1032,6 +1088,9 @@ func try_dash() -> bool:
 	hyper = false
 	Sfx.play_at("dash", global_position, -6.0)
 	if battle:
+		if is_player:
+			battle.cam.punch(-0.04)
+			battle.cam.roll_kick(-0.02 * signf(dash_dir.x))
 		battle.fx.afterimage(self)
 		battle.fx.snow_kick(global_position, -dash_dir, 12 if is_player else 5)
 	return true
@@ -1264,7 +1323,9 @@ func break_stance(src: Unit) -> void:
 	Sfx.play_at("break", global_position, -2.0)
 	if battle:
 		battle.fx.ring(global_position + Vector2(0, -10), 20.0, Color(1, 0.9, 0.3, 1), 0.3)
-		battle.fx.text(global_position + Vector2(0, -30), "BROKEN", Color("#ffd23f"))
+		# words only for the player's own fights; the rest of the field reads by its rings
+		if is_player or (src != null and src.is_player):
+			battle.fx.text(global_position + Vector2(0, -30), "BROKEN", Color("#ffd23f"))
 	if src and src.is_player:
 		Game.add_style("break", 90.0, "STANCE BREAK", Color("#ffd23f"))
 		Game.hitstop(0.08)
@@ -1326,12 +1387,14 @@ func take_hit(src: Unit, h: Dictionary) -> String:
 		hp -= chip
 		vel += -from * float(h["kb"]) * 0.45
 		guard_counter_t = 0.5
+		guard_hit_t = 0.25
 		Sfx.play_at("block", global_position, -3.0)
 		battle.fx.sparks(global_position + Vector2(0, -12) + from * 6.0, Color(1, 0.9, 0.6), 6)
 		if stamina <= 0.0:
 			stamina = 0.0
 			stagger(0.85)
-			battle.fx.text(global_position + Vector2(0, -28), "GUARD BREAK", Color("#ff8c42"))
+			if is_player or (src != null and src.is_player):
+				battle.fx.text(global_position + Vector2(0, -28), "GUARD BREAK", Color("#ff8c42"))
 			Sfx.play_at("break", global_position, -4.0)
 			if src and src.is_player:
 				Game.add_style("gbreak", 70.0, "GUARD BREAK", Color("#ff8c42"))
@@ -1355,7 +1418,7 @@ func take_hit(src: Unit, h: Dictionary) -> String:
 
 	var src_player := src != null and src.is_player
 	if not is_player and not src_player:
-		dmg *= 0.45
+		dmg *= 0.36
 		if is_boss or is_officer:
 			dmg *= 0.25
 	if is_player and not src_player:
@@ -1383,8 +1446,9 @@ func take_hit(src: Unit, h: Dictionary) -> String:
 		Game.register_hit()
 		src.spirit = minf(MAX_SPIRIT, src.spirit + dmg * 0.35 * src._spirit_k())
 		src.rally_recover(dmg)
-		battle.fx.text(global_position + Vector2(randf_range(-6, 6), -26), str(int(round(dmg))),
-			Color("#ffe8a3") if not h.get("crit", false) else Color("#ff4d4d"))
+		if h.get("crit", false) or dmg >= 45.0:
+			battle.fx.text(global_position + Vector2(randf_range(-6, 6), -40), str(int(round(dmg))),
+				Color("#ffe8a3") if not h.get("crit", false) else Color("#ff4d4d"))
 	if is_player:
 		rally = minf(dmg * 0.9 + rally * 0.5, max_hp)
 		rally_hold = 1.0
@@ -1475,11 +1539,16 @@ func take_hit(src: Unit, h: Dictionary) -> String:
 	if src_player and not h.get("crit", false):
 		Game.hitstop((0.05 if not heavy_hit else 0.085) + (0.05 if hp <= 0.0 else 0.0))
 		battle.cam.kick(-from * (2.0 if not heavy_hit else 3.5))
+		battle.cam.punch(0.014 if not heavy_hit else 0.026)
+		if hp <= 0.0:
+			battle.cam.punch(0.03)
+			battle.cam.roll_kick(randf_range(-0.014, 0.014))
 		if hp <= 0.0:
 			battle.cam_shake(3.5)
 			Sfx.play_at("hit_heavy", global_position, -3.0, 0.75)
 	if is_player:
 		battle.cam.kick(-from * 3.0)
+		battle.cam.punch(-0.02)
 	if battle.duel:
 		battle.cheer()
 	if hp <= 0.0:
@@ -1533,83 +1602,77 @@ func die(killer: Unit, h: Dictionary) -> void:
 	if dead:
 		return
 	dead = true
+	lod_tick = true
 	hp = 0.0
 	state = St.DEAD
 	death_t = 0.0
+	death_frame_t = 0.0
 	air_dur = 0.0
-	body.self_modulate = Color.WHITE
-	body.flip_h = face < 0
-	wpn.visible = false
-	if wpn2:
-		wpn2.visible = false
-	if shield_spr:
-		shield_spr.visible = false
-	shadow.visible = false
-	if sh_body:
-		sh_body.visible = false
-		sh_wpn.visible = false
+	rig.modulate = Color.WHITE
 	Sfx.play_at("death", global_position, -6.0 if not is_player else 0.0)
 	if battle and mounted and randf() < (1.0 if is_player else 0.75):
 		battle.spawn_horse(fac_key if not is_player else horse_fac, global_position, vel + move_vel)
+	if mounted:
+		mounted = false
+		_refresh_sheets()
 	var by_player := killer != null and is_instance_valid(killer) and killer.is_player
-	if not mounted and not is_boss:
-		# knocked off their feet: the body spins through the air and lands a few steps away
-		var src_pos: Vector2 = h.get("src_pos", global_position - aim * 10.0)
-		var away := (global_position - src_pos).normalized()
-		if away.length_squared() < 0.01:
-			away = -aim
-		fly_dur = 0.42 if by_player else 0.3
-		fly_t = 0.0
-		fly_spin = randf_range(7.0, 11.0) * (1.0 if away.x >= 0.0 else -1.0)
-		vel = away * (240.0 if by_player else 110.0)
-		body.texture = frames["hurt"]
-		body.offset = body_off
-	else:
-		_lie_down()
-		if battle:
-			battle.decals.blood_pool(global_position + Vector2(0, -2), 5.0 + randf() * 4.0 + (6.0 if mounted else 0.0))
+	# fall away from the blow: face the killer, get knocked back, the death animation plays out
+	var src_pos: Vector2 = h.get("src_pos", global_position - aim * 10.0)
+	var away := (global_position - src_pos).normalized()
+	if away.length_squared() < 0.01:
+		away = -aim
+	dir8 = UnitArt.dir_index(-away)
+	var heavy: bool = h.get("heavy", false) or h.get("crit", false) or h.get("launch", false) or float(h.get("kb", 0.0)) > 120.0
+	vel = away * ((330.0 if heavy else 210.0) if by_player else 90.0)
+	if is_boss:
+		vel *= 0.3
+	fly_dur = (0.32 if heavy else 0.2) if by_player else 0.0
+	fly_t = 0.0
 	if battle:
 		battle.on_unit_killed(self, killer, h)
 
-func _lie_down() -> void:
-	body.rotation = 0.0
-	body.position = Vector2.ZERO
-	body.scale = base_scale
-	body.texture = frames["dead"]
-	var ts: Vector2 = frames["dead"].get_size()
-	body.offset = Vector2(-ts.x * 0.5, -ts.y + 6.0)
-
 func _update_dead(delta: float) -> void:
 	death_t += delta
+	death_frame_t += delta
+	var fl := UnitArt.frames(body_sheet, "death", UnitArt.DIR8[dir8][0])
+	var n := maxi(1, fl.size())
+	var fi := clampi(int(death_frame_t / 0.085), 0, n - 1)
+	position += vel * delta
+	vel = vel.move_toward(Vector2.ZERO, 520.0 * delta)
+	if battle:
+		position = battle.clamp_unit(self, position)
+	var hop := 0.0
 	if fly_t < fly_dur:
 		fly_t += delta
-		var k := clampf(fly_t / fly_dur, 0.0, 1.0)
-		body.position.y = -sin(k * PI) * 13.0
-		body.rotation += fly_spin * delta
-		position += vel * delta
-		if fly_t >= fly_dur:
-			_lie_down()
-			vel *= 0.35
-			if battle:
-				battle.fx.snow_puff(global_position)
-				battle.decals.blood_pool(global_position + Vector2(0, -2), 5.0 + randf() * 4.0)
-		return
-	position += vel * delta
-	vel = vel.move_toward(Vector2.ZERO, 600.0 * delta)
-	if death_t > 1.4:
-		body.modulate.a = clampf(1.0 - (death_t - 1.4) / 0.4, 0.0, 1.0)
-	if death_t > 1.0 and not sk.get("stamped", false):
-		sk["stamped"] = true
+		hop = sin(clampf(fly_t / fly_dur, 0.0, 1.0) * PI) * 10.0
+		if fly_t >= fly_dur and battle:
+			battle.fx.dust(global_position, 6)
+			if battle.on_screen(global_position) and fly_dur > 0.25:
+				battle.cam_shake(1.0)
+	if not sk.get("pooled", false) and death_t > 0.45:
+		sk["pooled"] = true
 		if battle:
-			battle.decals.stamp(body.texture, global_position + body.offset, body.flip_h)
-	if death_t > 1.8:
-		queue_free()
+			battle.decals.blood_pool(global_position + Vector2(0, -1), 5.0 + randf() * 4.0 + (4.0 if is_boss else 0.0))
+	rig.position = Vector2(0, -hop)
+	_show_frame("death", fi)
+	if fi >= n - 1 and death_t > 0.8 and vel.length() < 5.0:
+		# done: rest as a corpse (the battle keeps the most recent ones as sprites)
+		set_process(false)
+		z_index = -1
+		if battle:
+			battle.add_corpse(self)
 
-## Lands after being launched: a thump of snow, then stays down (open to an execution).
+## Bakes this corpse into the ground decals and removes the node.
+func settle_corpse() -> void:
+	if battle and is_instance_valid(body) and body.texture:
+		battle.decals.stamp_sprite(body, global_position)
+	queue_free()
+
+## Lands after being launched: a thump of dust, then stays down (open to an execution).
 func _land() -> void:
 	sq = Vector2(1.25, 0.75)
 	if battle:
-		battle.fx.snow_puff(global_position)
+		battle.fx.dust(global_position, 5)
 		if battle.on_screen(global_position):
 			battle.cam_shake(2.5)
 		Sfx.play_at("hit_heavy", global_position, -8.0, 0.6)
@@ -1647,27 +1710,30 @@ func _integrate(delta: float) -> void:
 		accel = 360.0
 	move_vel = move_vel.move_toward(desired, accel * delta)
 	var total := move_vel + vel + sep * (0.35 if is_player else 1.0)
+	if vel != Vector2.ZERO:
+		vel = vel.move_toward(Vector2.ZERO, (1100.0 if state != St.DASH else 200.0) * delta)
+	if total.length_squared() < 0.01:
+		return
 	var before := position
-	position += total * delta
-	vel = vel.move_toward(Vector2.ZERO, (1100.0 if state != St.DASH else 200.0) * delta)
+	var np := before + total * delta
 	if battle:
-		position = battle.clamp_unit(self, position)
-	var moved := (position - before).length()
-	step_acc += moved
-	if step_acc > 9.0 and not mounted:
+		np = battle.clamp_unit(self, np)
+	position = np
+	step_acc += (np - before).length()
+	if step_acc > (14.0 if mounted else 10.0):
 		step_acc = 0.0
-		if battle:
-			sk["foot"] = -int(sk.get("foot", 1))
-			battle.decals.footprint(global_position + Vector2(randf_range(-1, 1), 1.5 * int(sk["foot"])))
-		if is_player:
-			Sfx.play("step", -14.0, randf_range(0.8, 1.2), 0.08)
-	elif step_acc > 14.0 and mounted:
-		step_acc = 0.0
-		if battle:
-			battle.decals.footprint(global_position + Vector2(-3, 0))
-			battle.decals.footprint(global_position + Vector2(4, 1))
+		if battle == null or not rig.visible:
+			return
+		if mounted:
+			battle.decals.footprint(np + Vector2(-3, 0))
+			battle.decals.footprint(np + Vector2(4, 1))
 			if move_vel.length() > 120.0:
-				battle.fx.snow_kick(global_position, -move_vel.normalized(), 3)
+				battle.fx.snow_kick(np, -move_vel.normalized(), 3)
+		else:
+			sk["foot"] = -int(sk.get("foot", 1))
+			battle.decals.footprint(np + Vector2(randf_range(-1, 1), 1.5 * int(sk["foot"])))
+			if is_player:
+				Sfx.play("step_snow" if battle.level == "snow_plains" else "step", -6.0, randf_range(0.85, 1.15), 0.08)
 
 func _trample() -> void:
 	if is_player and battle != null and battle.level == "commander_city":
@@ -1702,169 +1768,339 @@ func _trample() -> void:
 # ------------------------------------------------------------------ visuals
 func _visuals(delta: float) -> void:
 	anim_t += delta
-	if is_player and battle and fmod(anim_t, 2.2) < delta and not dead:
-		battle.fx.breath(global_position + Vector2(3.0 * face, -17.0 if not mounted else -26.0), float(face))
+	guard_hit_t -= delta
 	if absf(aim.x) > 0.12:
-		var nf := 1 if aim.x > 0.0 else -1
-		if nf != face:
-			sq = Vector2(0.72, 1.06)
-		face = nf
-	var moving := move_vel.length() > 14.0
-	var t: Texture2D
-	match state:
-		St.STAGGER, St.KNOCKDOWN:
-			t = frames["hurt"]
-		St.BROKEN:
-			t = frames["broken"]
-		St.CRIT:
-			t = frames["broken"] if crit_target == null else frames["idle"][0]
-		_:
-			if moving:
-				var rate := 10.0 * clampf(move_vel.length() / 90.0, 0.6, 1.6)
-				t = frames["walk"][int(anim_t * rate) % frames["walk"].size()]
-			else:
-				t = frames["idle"][int(anim_t * 2.2) % 2]
-	body.texture = t
-	body.flip_h = face < 0
-	body.offset = body_off
-	# lean into a run, pull back in the wind-up, throw the weight into the swing
+		face = 1 if aim.x > 0.0 else -1
+	# soldiers outside the view skip all sprite work
+	var vis: bool = battle == null or battle.in_view(global_position)
+	if vis != rig.visible:
+		rig.visible = vis
+	if not vis:
+		return
+	if is_player and battle and fmod(anim_t, 2.2) < delta and battle.level == "snow_plains":
+		battle.fx.breath(global_position + Vector2(3.0 * face, -24.0), float(face))
+	_update_dir()
+	_pick_frame(delta)
+	# lean into a dash or a stagger, squash on impacts, hop when launched or cheering
 	var lean_goal := 0.0
 	match state:
-		St.ATTACK:
-			lean_goal = (-0.1 if mv_phase == 0 else (0.16 if mv_phase == 1 else 0.04)) * face
 		St.DASH:
-			lean_goal = 0.22 * signf(dash_dir.x) if absf(dash_dir.x) > 0.2 else 0.0
-		St.STAGGER, St.KNOCKDOWN:
-			lean_goal = -0.18 * face
-		_:
-			if moving:
-				lean_goal = clampf(move_vel.x / maxf(base_speed, 1.0), -1.0, 1.0) * 0.1
+			lean_goal = 0.16 * signf(dash_dir.x) if absf(dash_dir.x) > 0.2 else 0.0
+		St.STAGGER:
+			lean_goal = -0.1 * face
+		St.ATTACK:
+			if mv_phase == 1:
+				lean_goal = 0.06 * face
 	lean = lerpf(lean, lean_goal, 1.0 - exp(-delta * 18.0))
-	body.rotation = lean
-	sq = sq.lerp(Vector2.ONE, 1.0 - exp(-delta * 12.0))
-	body.scale = base_scale * sq
-	var bx := 0.0
-	if state == St.ATTACK:
-		if mv_phase == 0:
-			bx = -1.0 * face
-		elif mv_phase == 1:
-			bx = face * (3.0 if mv.get("kick", false) else 2.0)
-		else:
-			bx = face * 1.0
-	body.position.x = bx
+	sq = sq.lerp(Vector2.ONE, 1.0 - exp(-delta * 14.0))
+	if absf(rig.rotation - lean) > 0.0005:
+		rig.rotation = lean
+	var want_scale := base_scale * sq / UnitArt.R
+	if not rig.scale.is_equal_approx(want_scale):
+		rig.scale = want_scale
 	var by := 0.0
-	if moving and (state == St.IDLE or state == St.GUARD) and not mounted:
-		var rate := 10.0 * clampf(move_vel.length() / 90.0, 0.6, 1.6)
-		by = -absf(sin(anim_t * rate * PI * 0.5)) * 1.1
 	if cheer_t > 0.0 and spectator:
-		by = -1.0 if int(anim_t * 8.0) % 2 == 0 else 0.0
+		by = -absf(sin(anim_t * 14.0)) * 2.5
 	if air_t < air_dur:
-		by -= sin(clampf(air_t / air_dur, 0.0, 1.0) * PI) * 22.0
-	body.position.y = by
-	# flash / tint
+		by -= sin(clampf(air_t / air_dur, 0.0, 1.0) * PI) * 24.0
+	if rig.position.y != by:
+		rig.position = Vector2(0.0, by)
+	# flash / tint (values above 1 whiten in the unit shader)
+	var mod := tint
 	if hit_flash > 0.0:
-		body.self_modulate = Color(3.2, 3.0, 3.0)
+		mod = Color(2.4, 2.4, 2.4)
 	elif is_player and invuln > 0.0 and state != St.DASH and state != St.CRIT and int(anim_t * 16.0) % 2 == 0:
-		body.self_modulate = Color(1.6, 1.5, 1.2, 0.75)
+		mod = Color(1.45, 1.4, 1.3, 0.8)
 	elif state == St.BROKEN:
-		body.self_modulate = Color(1.25, 1.15, 0.8)
+		mod = Color(1.0 + 0.25 * (0.5 + 0.5 * sin(anim_t * 14.0)), 1.15, 0.85)
 	elif buff_t > 0.0:
-		body.self_modulate = Color(1.25, 1.05, 0.95)
-	else:
-		body.self_modulate = tint
-	_weapon_visual()
-	_update_shadow()
-	_update_cape(delta)
+		mod = Color(1.18, 1.04, 0.96)
+	if rig.modulate != mod:
+		rig.modulate = mod
 
-# ------------------------------------------------------------------ cape (Verlet cloth)
-func enable_cape(cols: Array) -> void:
-	if cape == null:
-		cape = Cape.new()
-		add_child(cape)
-		move_child(cape, body.get_index())
-	cape.setup(cols, CAPE_SEG * (1.35 if is_boss else 1.0), 1.4 if is_boss else 1.0)
-	cape.reset(_cape_anchor(), face)
-
-func _cape_anchor() -> Vector2:
-	var y := -21.0 if mounted else (-18.0 if is_boss else -13.0)
-	return global_position + Vector2(-1.5 * face, y + body.position.y)
-
-func _update_cape(delta: float) -> void:
-	if cape != null:
-		cape.step(delta, _cape_anchor(), face)
-
-## Long shadow cast away from the sun (body and weapon), see ShadowLayer.
-func _update_shadow() -> void:
-	if sh_body == null:
+## The facing direction (8-way): the aim while fighting, the way you move otherwise. A little
+## hysteresis keeps it from flickering between two directions.
+func _update_dir() -> void:
+	var look := aim
+	var moving := move_vel.length() > 30.0
+	match state:
+		St.DASH:
+			look = dash_dir
+		St.IDLE, St.DRINK:
+			if moving and not _combat_focus():
+				look = move_vel
+		St.ATTACK, St.CRIT, St.SKILL, St.CLASH, St.GUARD:
+			look = aim
+	if look.length_squared() < 0.0001:
 		return
-	var sv: Vector2 = battle.shadow_vec
-	var o := global_position
-	sh_body.texture = body.texture
-	sh_body.flip_h = body.flip_h
-	sh_body.offset = body.offset
-	sh_body.transform = Transform2D(Vector2(body.scale.x, 0.0), -sv * body.scale.y, o + Vector2(body.position.x, 0.0))
-	sh_wpn.visible = wpn.visible
-	if wpn.visible:
-		sh_wpn.texture = wpn.texture
-		sh_wpn.flip_v = wpn.flip_v
-		sh_wpn.offset = wpn.offset
-		sh_wpn.transform = Transform2D(0.0, o) * Transform2D(Vector2(1.0, 0.0), -sv, Vector2.ZERO) * wpn.transform
+	var snap := state == St.ATTACK or state == St.CRIT or state == St.SKILL or state == St.DASH
+	var cur := dir8 * PI * 0.25
+	if snap or absf(angle_difference(look.angle(), cur)) > PI / 8.0 + 0.14:
+		dir8 = UnitArt.dir_index(look)
 
-func _exit_tree() -> void:
-	if sh_body and is_instance_valid(sh_body):
-		sh_body.queue_free()
-	if sh_wpn and is_instance_valid(sh_wpn):
-		sh_wpn.queue_free()
+func _combat_focus() -> bool:
+	if is_player:
+		return combo_reset > 0.0 or i_guard
+	if brain == null or spectator:
+		return false
+	var tg = brain.target
+	return tg != null and is_instance_valid(tg) and global_position.distance_squared_to(tg.global_position) < 8100.0
 
-func _weapon_visual() -> void:
-	if state == St.IDLE or state == St.GUARD or state == St.DASH or state == St.DRINK:
-		var rest_rel := deg_to_rad(weapon.rest)
-		if state == St.GUARD and not weapon.shield and not weapon.ranged:
-			rest_rel = deg_to_rad(-60.0)
-		if state == St.DRINK:
-			rest_rel = deg_to_rad(80.0)
-		if cheer_t > 0.0 and spectator:
-			rest_rel = deg_to_rad(-80.0)
-		var target := aim.angle() + rest_rel * face
-		weapon_angle = rotate_toward(weapon_angle, target, 0.35)
-	elif state == St.STAGGER or state == St.KNOCKDOWN or state == St.BROKEN:
-		weapon_angle = rotate_toward(weapon_angle, PI * 0.5, 0.2)
-	elif state == St.CLASH:
-		weapon_angle = aim.angle() - deg_to_rad(38.0 + sin(anim_t * 40.0) * 3.0) * face
-	var wd: Dictionary = Art.weapons[weapon.tex_key]
-	var pivot: Vector2 = wd["pivot"]
-	var tex_h := float(wd["tex"].get_height())
-	var flip := face < 0
-	var shoulder := Vector2(2.0 * face, -22.0 if mounted else -13.0)
-	if is_boss:
-		shoulder = Vector2(3.0 * face, -17.0)
-	var hand := shoulder + Vector2.from_angle(weapon_angle) * 3.0 + Vector2(body.position.x * 0.6, body.position.y)
-	if state == St.ATTACK and mv_phase == 1 and mv.get("shape", "arc") == "thrust":
-		hand += Vector2.from_angle(weapon_angle) * float(mv.get("ext", 0.0)) * clampf(mv_t / float(mv["a"]) * 2.0, 0.0, 1.0)
-	elif state == St.CRIT and crit_target != null and crit_style == "thrust":
-		hand += Vector2.from_angle(weapon_angle) * 10.0 * clampf(st_t / 0.22, 0.0, 1.0)
-	wpn.position = hand
-	wpn.rotation = weapon_angle
-	wpn.flip_v = flip
-	wpn.offset = Vector2(-pivot.x, -(tex_h - 1.0 - pivot.y) if flip else -pivot.y)
-	# draw weapon behind the body when it points upward
-	var front := sin(weapon_angle) > -0.25
-	if front != wpn_front:
-		wpn_front = front
-		move_child(wpn, get_child_count() - 1 if front else 1)
-	if wpn2:
-		wpn2.position = Vector2(-2.0 * face, -12.0) + Vector2.from_angle(weapon_angle + PI * 0.8 * face) * 3.0
-		wpn2.rotation = weapon_angle + PI * 0.8 * face
-		wpn2.flip_v = flip
-		wpn2.offset = wpn.offset
-	if shield_spr:
-		shield_spr.flip_h = flip
-		var raised: bool = state == St.GUARD or (state == St.ATTACK and mv.get("bash", false)) or (state == St.SKILL and skill_id == "bulwark_rush")
-		if raised:
-			shield_spr.position = Vector2(6.0 * face, -11.0)
-			if shield_spr.get_index() != get_child_count() - 1:
-				move_child(shield_spr, get_child_count() - 1)
-		else:
-			shield_spr.position = Vector2(-4.0 * face, -11.0)
-			if shield_spr.get_index() != 1:
-				move_child(shield_spr, 1)
+func _nf(anim: String) -> int:
+	return UnitArt.frames(body_sheet, anim, UnitArt.DIR8[dir8][0]).size()
+
+func _prog(t: float, dur: float, n: int) -> int:
+	return clampi(int(clampf(t / maxf(dur, 0.001), 0.0, 0.999) * n), 0, maxi(0, n - 1))
+
+func _pick_frame(delta: float) -> void:
+	var speed := move_vel.length()
+	if mounted:
+		_mounted_frame(delta)
+		return
+	match state:
+		St.ATTACK:
+			_attack_frame()
+			return
+		St.DASH:
+			_show_frame("dodge", _prog(st_t, st_dur, _nf("dodge")))
+			return
+		St.STAGGER:
+			if air_t < air_dur:
+				_show_frame("hit", 1)
+			else:
+				_show_frame("hit", _prog(st_t, minf(st_dur, 0.5), _nf("hit")))
+			return
+		St.KNOCKDOWN:
+			_knockdown_frame()
+			return
+		St.BROKEN:
+			_show_frame("hit", 2 if int(anim_t * 3.0) % 2 == 0 else 3)
+			return
+		St.CRIT:
+			if crit_target != null:
+				var a := "a1"
+				if crit_style == "thrust":
+					a = "a3"
+				elif crit_style == "overhead":
+					a = "a2" if aset == "2h" else "a4"
+				_timed_attack(a, st_t, 0.22, 0.32, st_dur)
+			else:
+				_show_frame("hit", 2)
+			return
+		St.DRINK:
+			_show_frame("drink", _prog(st_t, st_dur, _nf("drink")))
+			return
+		St.SKILL:
+			_skill_frame()
+			return
+		St.CLASH:
+			_show_frame("block", 0)
+			return
+		St.GUARD:
+			if guard_hit_t > 0.0:
+				_show_frame("blockhit", _prog(0.25 - guard_hit_t, 0.25, _nf("blockhit")))
+			else:
+				_show_frame("block", int(anim_t * 2.0) % maxi(1, _nf("block")))
+			return
+	if spectator and cheer_t > 0.0:
+		_show_frame("cheer", int(anim_t * 6.0) % maxi(1, _nf("cheer")))
+	elif speed > 14.0:
+		var running := speed > 105.0
+		var anim := "run" if running else "walk"
+		var rate := (1.25 * speed / 150.0) if running else (0.95 * speed / 72.0)
+		run_phase = fposmod(run_phase + delta * clampf(rate, 0.5, 2.4), 1.0)
+		var n := _nf(anim)
+		_show_frame(anim, int(run_phase * n) % maxi(1, n))
+	elif weapon.ranged and reload_t > 0.0 and is_player:
+		_show_frame("reload", _prog(weapon.reload - reload_t, weapon.reload, _nf("reload")))
+	else:
+		run_phase = 0.0
+		_show_frame("idle", int((anim_t + anim_ofs) * 3.6) % maxi(1, _nf("idle")))
+
+## Attack frames follow the timing of the move itself: wind-up, active and recovery each map
+## to their part of the baked animation, so the blade is mid-swing exactly while the hit is live.
+func _attack_frame() -> void:
+	var anim := mv_anim
+	if anim == "shoot":
+		match mv_phase:
+			0:
+				_show_frame("aim", 0 if charging else int(mv_t * 6.0) % 2)
+			1:
+				_show_frame("shoot", 1)
+			_:
+				_show_frame("shoot", 2 + int(clampf(mv_t / maxf(float(mv["r"]), 0.01), 0.0, 0.99) * 2.0))
+		return
+	var n := _nf(anim)
+	if n == 0:
+		anim = "a1"
+		n = _nf(anim)
+	var w := 3
+	var a := 2
+	var info = UnitArt.anim_info.get(aset + "/" + anim)
+	if info != null:
+		w = int(info["windup"])
+		a = int(info["active"])
+	elif n == 8:
+		w = 2
+		a = 4
+	var fi := 0
+	match mv_phase:
+		0:
+			fi = w - 1 if charging else _prog(mv_t, mv_w, w)
+		1:
+			fi = w + _prog(mv_t, float(mv["a"]), a)
+		_:
+			var rec: float = float(mv["r"]) * (1.0 if is_player else 1.3)
+			fi = w + a + _prog(mv_t, rec, maxi(1, n - w - a))
+	_show_frame(anim, mini(fi, n - 1))
+
+## Frame for a timed swing (criticals, skills): wind-up until t_w, active until t_a.
+func _timed_attack(anim: String, t: float, t_w: float, t_a: float, dur: float) -> void:
+	var n := _nf(anim)
+	var info = UnitArt.anim_info.get(aset + "/" + anim)
+	var w := int(info["windup"]) if info != null else 2
+	var a := int(info["active"]) if info != null else 2
+	var fi := 0
+	if t < t_w:
+		fi = _prog(t, t_w, w)
+	elif t < t_a:
+		fi = w + _prog(t - t_w, t_a - t_w, a)
+	else:
+		fi = w + a + _prog(t - t_a, maxf(0.01, dur - t_a), maxi(1, n - w - a))
+	_show_frame(anim, mini(fi, maxi(0, n - 1)))
+
+func _skill_frame() -> void:
+	var s: Array = SKILL_ANIMS.get(skill_id, ["a1", 0.1, 0.25])
+	var anim: String = s[0]
+	if anim == "spin" and _nf("spin") == 0:
+		anim = "a2"
+	if anim == "aim" and _nf("aim") == 0:
+		anim = "a1"
+	var dur: float = sk.get("dur", 0.6)
+	match skill_id:
+		"tempest":
+			_show_frame(anim, int(st_t * 12.0) % maxi(1, _nf(anim)))
+		"blade_dance":
+			_show_frame("a1" if int(st_t * 10.0) % 2 == 0 else "a2", 3)
+		"bulwark_rush":
+			_show_frame("block", 0)
+		_:
+			_timed_attack(anim, st_t, s[1], s[2], dur)
+
+func _knockdown_frame() -> void:
+	if air_t < air_dur:
+		_show_frame("hit", 1)
+		return
+	var nd := _nf("death")
+	var ns := _nf("standup")
+	var up_t := minf(0.4, st_dur * 0.45)
+	if st_t < 0.3:
+		_show_frame("death", _prog(st_t, 0.3, maxi(1, nd - 1)))
+	elif st_t < st_dur - up_t or ns == 0:
+		_show_frame("death", maxi(0, nd - 1))
+	else:
+		_show_frame("standup", _prog(st_t - (st_dur - up_t), up_t, ns))
+
+var _last_horse = null
+
+## On horseback: the horse walks or gallops with the speed (or rears when hit); the rider sits
+## on the saddle point of that horse frame and fights with the upper-body animations.
+func _mounted_frame(delta: float) -> void:
+	var speed := move_vel.length() + (vel.length() * 0.5 if is_player else 0.0)
+	var dk: Array = UnitArt.DIR8[dir8]
+	var ha := "idle"
+	var hn := UnitArt.frames("horse", "idle", dk[0]).size()
+	var hfi := int((anim_t + anim_ofs) * 1.2) % maxi(1, hn)
+	if state == St.STAGGER or state == St.KNOCKDOWN:
+		ha = "hit"
+		hfi = _prog(st_t, minf(st_dur, 0.5), UnitArt.frames("horse", "hit", dk[0]).size())
+	elif speed > 120.0:
+		ha = "gallop"
+		run_phase = fposmod(run_phase + delta * clampf(speed / 175.0 * 1.9, 0.9, 2.8), 1.0)
+		hfi = int(run_phase * 6.0) % 6
+	elif speed > 14.0:
+		ha = "walk"
+		run_phase = fposmod(run_phase + delta * clampf(speed / 80.0, 0.5, 1.6), 1.0)
+		hfi = int(run_phase * 6.0) % 6
+	var hl: Array = UnitArt.frames("horse", ha, dk[0])
+	if not hl.is_empty():
+		var hf = hl[clampi(hfi, 0, hl.size() - 1)]
+		if hf != _last_horse or dk[1] != _last_flip:
+			_last_horse = hf
+			_set_sprite(horse_spr, hf, dk[1])
+	seat = UnitArt.saddle_at(ha, dir8, hfi) * UnitArt.R
+	body.position = seat
+	wpn.position = seat
+	match state:
+		St.ATTACK:
+			_attack_frame()
+		St.STAGGER, St.KNOCKDOWN, St.BROKEN:
+			_show_frame("hit", _prog(st_t, minf(st_dur, 0.5), _nf("hit")))
+		St.SKILL:
+			_skill_frame()
+		St.CRIT:
+			_timed_attack("a2", st_t, 0.22, 0.32, st_dur)
+		_:
+			_show_frame("ride", int((anim_t + anim_ofs) * 1.5) % maxi(1, _nf("ride")))
+
+var _last_body = null
+var _last_wpn = null
+var _last_flip := false
+
+func _show_frame(anim: String, fi: int) -> void:
+	var dk: Array = UnitArt.DIR8[dir8]
+	if mounted and anim == "a4":
+		anim = "a2"
+	var fl: Array = UnitArt.frames(body_sheet, anim, dk[0])
+	if fl.is_empty():
+		anim = "ride" if mounted else "idle"
+		fl = UnitArt.frames(body_sheet, anim, dk[0])
+		if fl.is_empty():
+			return
+		fi = 0
+	fi = clampi(fi, 0, fl.size() - 1)
+	cur_anim = anim
+	cur_frame = fi
+	var flip: bool = dk[1]
+	var fb = fl[fi]
+	if fb != _last_body or flip != _last_flip:
+		_last_body = fb
+		_set_sprite(body, fb, flip)
+	var fw = null
+	if not dead and weapon != null:
+		var wl: Array = UnitArt.frames(wpn_sheet, anim, dk[0])
+		if fi < wl.size():
+			fw = wl[fi]
+	if fw == null:
+		if wpn.visible:
+			wpn.visible = false
+		_last_wpn = null
+	elif fw != _last_wpn or flip != _last_flip:
+		_last_wpn = fw
+		wpn.visible = true
+		_set_sprite(wpn, fw, flip)
+	_last_flip = flip
+
+func _set_sprite(s: Sprite2D, fr, flip: bool) -> void:
+	if fr == null:
+		s.visible = false
+		return
+	s.visible = true
+	s.texture = fr["tex"]
+	s.region_rect = fr["rect"]
+	s.flip_h = flip
+	s.offset = Vector2(-(float(fr["w"]) - float(fr["ax"])) if flip else -float(fr["ax"]), -float(fr["ay"]))
+
+## Where swing trails are drawn from: the feet, or the saddle on horseback.
+func trail_origin() -> Vector2:
+	if mounted:
+		return global_position + (seat / UnitArt.R + Vector2(0, 4.0)) * base_scale.x
+	return global_position
+
+## Where the weapon tip is during the current swing (for glints and trails), in world space.
+func weapon_tip() -> Vector2:
+	var pts := UnitArt.trail(aset, mv_anim if state == St.ATTACK else "a1", dir8)
+	var s := base_scale.x
+	if pts.size() > 0:
+		return trail_origin() + pts[0] * s
+	return trail_origin() + Vector2(8.0 * face, -26.0) * s

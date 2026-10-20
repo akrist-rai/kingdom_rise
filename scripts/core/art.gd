@@ -64,6 +64,7 @@ var weapons := {}        # weapon tex key -> {tex, pivot:Vector2, len:float}
 var crowd := {}          # faction -> [textures]
 var crowd_torch := {}    # faction -> torch-bearer texture
 var ready_done := false
+var gallery := false
 
 var _jobs: Array = []
 var _results := {}
@@ -75,9 +76,13 @@ func _build() -> void:
 	var t0 := Time.get_ticks_msec()
 	_build_fx_images()
 	_jobs.clear()
-	_queue_units()
-	_queue_horses()
-	_queue_crowd()
+	# the soldiers, horses and crowds are baked sprite sheets now (UnitArt); the old vector
+	# versions are only drawn for the debug gallery
+	gallery = OS.get_cmdline_user_args().has("--gallery")
+	if gallery:
+		_queue_units()
+		_queue_horses()
+		_queue_crowd()
 	ArtProps.queue_weapons(self)
 	ArtProps.queue_props(self)
 	# large portraits for the anime cut-ins (reported at unit size, drawn magnified)
@@ -312,7 +317,7 @@ func _assemble() -> void:
 		if key.begins_with("unit/") or key.begins_with("crowd/") or key.begins_with("wpn/"):
 			continue
 		tex[key] = _results[key]
-	for fac in ["qin", "zhao"]:
+	for fac in ["qin", "zhao"] if gallery else []:
 		for kind in KINDS.keys():
 			if kind == "general" and fac == "qin":
 				continue
@@ -331,7 +336,7 @@ func _assemble() -> void:
 			arr.append(_results["crowd/%s_%d" % [fac, v]])
 		crowd[fac] = arr
 		crowd_torch[fac] = _results["crowd/%s_torch" % fac]
-	for kind in RIDER_KINDS:
+	for kind in RIDER_KINDS if gallery else []:
 		var base := "unit/qin_%s_m/" % kind
 		var d := {"walk": [], "idle": []}
 		for f in 4:

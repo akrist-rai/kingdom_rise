@@ -1,0 +1,8 @@
+Music (CC0, opengameart.org):
+- war_theme.ogg: "War Theme" by Spring Spring
+- battle_loop.wav: "Determined Pursuit (epic orchestra loop)" by Emma_MA
+- boss_battle.wav: "Massive Battle" by Eldritch Grim
+
+Sound effects:
+- Kenney Impact Sounds, RPG Audio, Interface Sounds (CC0, kenney.nl)
+- "Swishes Sound Pack" and "RPG Sound Pack" by artisticdude (CC0, opengameart.org)

@@ -11,6 +11,7 @@ static var W := 3200.0
 static var H := 960.0
 static var TOP := 78.0
 static var BOT := 925.0
+static var view := Rect2(-1e6, -1e6, 2e6, 2e6)   # this frame's visible world rect (+ margin), for props
 const CELL := 40.0
 const DUEL_RX := 165.0
 const DUEL_RY := 118.0
@@ -47,7 +48,7 @@ var tactics: FormationDirector
 var fg_grass: Node2D
 
 var frozen := false
-var enemy_dmg_mult := 1.0
+var enemy_dmg_mult := 0.85
 var reserves := [1200, 1800]
 var reserves_max := [1200, 1800]
 var caps := [150, 230]
@@ -107,6 +108,13 @@ var debug_impact := -1.0
 var aura_tick := 0.0
 var zoom_t := 0.0
 var soft_target: Unit = null   # who the player's next attack will go to (shown with a marker)
+var view_rect := Rect2(-1e6, -1e6, 2e6, 2e6)   # the camera view (+ margin) this frame, for culling
+var corpses: Array = []         # fallen soldiers still drawn as sprites (oldest are baked into the ground)
+const MAX_CORPSES := 160
+var unit_shadows: UnitShadows
+var fire_emitters: Array = []   # smoke and spark emitters of the fires (paused while off screen)
+var emit_t := 0.0
+var scenery: Scenery
 var soft_t := 0.0
 var debug_zoom := -1.0
 
@@ -160,6 +168,13 @@ func _ready() -> void:
 	Sfx.intensity = 0.0
 	Sfx.start_music()
 	Sfx.play("horn", -3.0)
+	if OS.get_cmdline_user_args().has("--noprops"):
+		_debug_freeze(self)
+	if OS.get_cmdline_user_args().has("--census"):
+		_debug_census.call_deferred()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--freeze="):
+			print("[debug] froze ", _debug_freeze_kind(self, a.substr(9)), " ", a.substr(9))
 	if level_ctl != null:
 		level_ctl.intro()
 	else:
@@ -184,8 +199,14 @@ func _build() -> void:
 	if level_ctl != null:
 		decals.RES = 1.5
 	decals.setup(Vector2(W, H))
+	scenery = Scenery.new()
+	add_child(scenery)
+	scenery.setup(self, Rect2(-260, -120, W + 520, H + 260))
 	shadows = ShadowLayer.new()
 	add_child(shadows)
+	unit_shadows = UnitShadows.new()
+	unit_shadows.battle = self
+	add_child(unit_shadows)
 	world = Node2D.new()
 	world.y_sort_enabled = true
 	add_child(world)
@@ -338,31 +359,74 @@ func query(pos: Vector2, r: float) -> Array:
 				out.append_array(grid[k])
 	return out
 
+var frame_no := 0
+
 func _separation() -> void:
+	frame_no += 1
+	# LOD: soldiers well outside the view think and move every third frame (time accumulates);
+	# soldiers not fighting near the player think every other frame.
+	var near := view_rect.grow(110.0)
+	var pp := player.global_position if player != null and is_instance_valid(player) else Vector2.INF
+	var idx := 0
 	for u in units:
-		var s := Vector2.ZERO
+		idx += 1
 		var p: Vector2 = u.global_position
-		for e in query(p, 18.0):
-			if e == u:
-				continue
-			var d: Vector2 = p - e.global_position
-			var min_d: float = u.radius + e.radius
-			var l2 := d.length_squared()
-			if l2 < min_d * min_d:
-				var l := sqrt(l2)
-				if l < 0.01:
-					d = Vector2(randf() - 0.5, randf() - 0.5)
-					l = 0.5
-				s += d / l * (min_d - l) * 12.0
+		var tick: bool = u.is_player or near.has_point(p) or (idx + frame_no) % 3 == 0
+		u.lod_tick = tick
+		u.brain_tick = u.is_player or (idx + frame_no) % 2 == 0 or (pp != Vector2.INF and p.distance_squared_to(pp) < 32400.0)
+		if not tick:
+			continue
+		# push apart from neighbours (inline grid walk: no temporary arrays)
+		var s := Vector2.ZERO
+		var cx := int(floor(p.x / CELL))
+		var cy := int(floor(p.y / CELL))
+		var ur: float = u.radius
+		for gx in range(cx - 1, cx + 2):
+			for gy in range(cy - 1, cy + 2):
+				var cell = grid.get(gx * 4096 + gy)
+				if cell == null:
+					continue
+				for e in cell:
+					if e == u:
+						continue
+					var d: Vector2 = p - e.global_position
+					var min_d: float = ur + e.radius
+					var l2 := d.length_squared()
+					if l2 < min_d * min_d:
+						var l := sqrt(l2)
+						if l < 0.01:
+							d = Vector2(randf() - 0.5, randf() - 0.5)
+							l = 0.5
+						s += d / l * (min_d - l) * 12.0
 		u.sep = s.limit_length(120.0)
 
-func on_screen(pos: Vector2) -> bool:
+## Culling rectangle: the visible world area plus a margin (soldiers are drawn above their feet).
+func _update_view_rect() -> void:
+	if cam == null:
+		return
 	var c := cam.get_screen_center_position()
-	return absf(pos.x - c.x) < 360.0 and absf(pos.y - c.y) < 220.0
+	var half := Game.VIEW * 0.5 / maxf(0.05, cam.zoom.x)
+	view_rect = Rect2(c - half - Vector2(40, 30), half * 2.0 + Vector2(80, 90))
+	Battle.view = view_rect
+
+func in_view(pos: Vector2) -> bool:
+	return view_rect.has_point(pos)
+
+func add_corpse(u) -> void:
+	corpses.append(u)
+	while corpses.size() > MAX_CORPSES:
+		var old = corpses.pop_front()
+		if is_instance_valid(old):
+			old.settle_corpse()
+
+func on_screen(pos: Vector2) -> bool:
+	return view_rect.has_point(pos)
 
 ## A manga impact frame: two-tone ink flash, speed lines, aberration and shake.
 func impact(pos: Vector2, dur: float = 0.1) -> void:
-	atmos.impact_frame(dur)
+	atmos.impact_frame(dur * 2.2)
+	atmos.impact_uv = hud._to_screen(pos) / Game.VIEW
+	cam.punch(0.06)
 	atmos.aberrate(5.0)
 	hud.speed_lines(hud._to_screen(pos), dur + 0.1)
 	cam_shake(7.0)
@@ -426,6 +490,8 @@ func _process(delta: float) -> void:
 		time += delta
 		Game.stats["time"] = time
 	Prof.frames += 1
+	_update_view_rect()
+	_cull_emitters(delta)
 	var _q0 := Time.get_ticks_usec()
 	_rebuild_grid()
 	var _q1 := Time.get_ticks_usec()
@@ -1117,7 +1183,6 @@ func _spawn_boss() -> void:
 	for u in units:
 		if u.faction == 1 and u.brain is AIBrain:
 			u.brain.rout = false
-	boss.enable_cape(Unit.CAPE_GENERAL)
 	hud.cutin("ALDRIC", "THE BLACK GLAIVE OF THE CROWN  -  GENERAL", Art.tex["portrait_zhao_general"], Color(0.95, 0.22, 0.3), 2.8)
 	Game.slowmo(0.2, 2.6)
 
@@ -1543,52 +1608,75 @@ func _crowd_zoom(rdt: float) -> void:
 	zoom_t -= rdt
 	if zoom_t > 0.0:
 		return
-	zoom_t = 0.25
+	zoom_t = 0.2
+	cam.cinematic = 1.0 if not hud.cut.is_empty() else 0.0
 	if Game.command_view:
 		cam.base_zoom = 0.52
+		cam.fight_weight = 0.0
 		return
 	if debug_zoom > 0.0:
 		cam.base_zoom = debug_zoom
 		return
 	if possess or player == null or not is_instance_valid(player):
-		cam.base_zoom = 0.95
+		cam.base_zoom = 1.05
+		cam.fight_weight = 0.0
 		return
 	if duel:
-		cam.base_zoom = 1.24
+		cam.base_zoom = 1.62
+		var foe = duel_foe
+		if foe != null and is_instance_valid(foe):
+			cam.fight_center = (player.global_position + foe.global_position) * 0.5
+			cam.fight_weight = 0.5
 		return
+	# who is fighting near you: their centre pulls the frame, their number sets the zoom
 	var near := 0
 	var crowd := 0
+	var sum := Vector2.ZERO
+	var wsum := 0.0
 	var pp := player.global_position
-	for e in query(pp, 210.0):
+	for e in query(pp, 230.0):
 		if e.dead or e.faction == player.faction or e.spectator:
 			continue
 		var d: float = e.global_position.distance_to(pp)
-		if d < 210.0:
+		if d < 230.0:
 			crowd += 1
+			var w := 1.0 - d / 230.0
+			sum += e.global_position * w
+			wsum += w
 			if d < 120.0:
 				near += 1
-	# a handful of enemies: in close; a press of bodies: pulled back to see the whole fight
-	var goal := 1.1
+	var goal := 1.34
 	if crowd >= 18:
-		goal = 1.0
-	elif crowd >= 12:
-		goal = 1.1
-	elif crowd >= 7:
-		goal = 1.1
+		goal = 1.12
+	elif crowd >= 11:
+		goal = 1.22
+	elif crowd >= 6:
+		goal = 1.32
 	elif near >= 1:
-		goal = 1.3
+		goal = 1.52
 	elif crowd >= 1:
-		goal = 1.18
+		goal = 1.42
 	if player.mounted:
-		goal -= 0.08
+		goal -= 0.12
+	if player.charging:
+		goal += 0.08 * player.charge
 	cam.base_zoom = goal
+	if wsum > 0.0:
+		cam.fight_center = sum / wsum
+		cam.fight_weight = clampf(wsum / 4.0, 0.0, 1.0) * 0.3
+	else:
+		cam.fight_weight = move_toward(cam.fight_weight, 0.0, 0.1)
 
 func _camera_shaders(rdt: float) -> void:
-	# The camera stays on the soldier with only a small lead in the direction of movement.
+	# lead: where you are going, and a little toward where you aim
 	if player != null and not possess and is_instance_valid(player):
-		cam.look = cam.look.lerp((player.move_vel * 0.14).limit_length(24.0), 1.0 - exp(-rdt * 3.0))
+		cam.look = cam.look.lerp((player.move_vel * 0.24).limit_length(48.0), 1.0 - exp(-rdt * 2.6))
+		var to_aim: Vector2 = player.i_aim_pt - player.global_position
+		var pull := (to_aim * 0.16).limit_length(40.0) if to_aim.length() < 600.0 else Vector2.ZERO
+		cam.aim_pull = cam.aim_pull.lerp(pull, 1.0 - exp(-rdt * 3.0))
 	else:
 		cam.look = cam.look.lerp(Vector2.ZERO, 0.1)
+		cam.aim_pull = cam.aim_pull.lerp(Vector2.ZERO, 0.1)
 	_crowd_zoom(rdt)
 	_soft_target_update(rdt)
 	blizzard = move_toward(blizzard, blizzard_target, rdt * 0.3)
@@ -1609,3 +1697,68 @@ func _camera_shaders(rdt: float) -> void:
 		r.set_excite(ex)
 	if not possess:
 		Sfx.intensity = clampf(Game.style_tier() / 6.0, 0.0, 1.0)
+
+func _debug_freeze(n: Node) -> void:
+	for c in n.get_children():
+		if not (c is Unit) and c != cam and c != fx and c != hud and c != atmos and c != tactics and c != proj and c != unit_shadows and c != decals:
+			c.set_process(false)
+		_debug_freeze(c)
+
+func _debug_freeze_kind(n: Node, what: String) -> int:
+	var k := 0
+	for c in n.get_children():
+		var hit := false
+		match what:
+			"emit":
+				hit = c is CPUParticles2D
+			"siege":
+				var s = c.get_script()
+				hit = s != null and str(s.resource_path).contains("siege_props")
+			"building":
+				hit = c is Scenery.Building
+			"scenery":
+				hit = c == scenery
+		if hit:
+			c.set_process(false)
+			if c is CPUParticles2D:
+				(c as CPUParticles2D).emitting = false
+				c.visible = false
+			k += 1
+		k += _debug_freeze_kind(c, what)
+	return k
+
+func _debug_census() -> void:
+	var counts := {}
+	var stack: Array = [self]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		for c in n.get_children():
+			stack.append(c)
+			if c is Unit:
+				continue
+			var key := c.get_class()
+			var s = c.get_script()
+			if s != null:
+				key += ":" + str(s.resource_path).get_file() + "/" + str(s.get_global_name())
+			if c.is_processing():
+				key += " [proc]"
+			counts[key] = int(counts.get(key, 0)) + 1
+	var keys := counts.keys()
+	keys.sort_custom(func(a, b): return counts[a] > counts[b])
+	for k in keys:
+		print("[census] ", counts[k], " ", k)
+
+## Fire emitters well outside the view stop simulating (they resume when the camera returns).
+func _cull_emitters(delta: float) -> void:
+	emit_t -= delta
+	if emit_t > 0.0:
+		return
+	emit_t = 0.25
+	var near := view_rect.grow(180.0)
+	for e in fire_emitters:
+		if not is_instance_valid(e):
+			continue
+		var on := near.has_point(e.global_position)
+		if e.visible != on:
+			e.visible = on
+			e.process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED

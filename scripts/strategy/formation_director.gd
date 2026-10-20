@@ -175,6 +175,8 @@ func _test_commands() -> void:
 		Game.command_view = true
 		assert(not battle.input_locked(), "Command view unexpectedly locks orders")
 		Game.command_view = false
+		# recount first: deaths and reinforcements earlier this frame leave `alive` stale
+		battle._rebuild_grid()
 		var strength = [battle.army_strength(0), battle.army_strength(1)]
 		density = 0
 		_apply_density()
@@ -309,18 +311,75 @@ func _draw() -> void:
 	_draw_impl()
 	Prof.add("formdir.draw", Time.get_ticks_usec() - _d0)
 
+## A capture point: a swallowtail war banner on a tall pole, a worn ring on the ground and the
+## capture progress swept around it, all in the colour of whoever holds it.
+func _draw_standard(ob: Dictionary) -> void:
+	var p: Vector2 = ob["p"]
+	var owner: int = ob["owner"]
+	var c: Color = Color("#c23a2e") if owner == 0 else Color("#2f6f9e") if owner == 1 else Color("#e9dcc0")
+	var tm := Time.get_ticks_msec() * 0.001
+	# the ring on the ground, seen at the camera's slant
+	draw_set_transform(p, 0.0, Vector2(1.0, 0.45))
+	draw_circle(Vector2.ZERO, 44.0, Color(c, 0.07))
+	draw_arc(Vector2.ZERO, 44.0, 0, TAU, 48, Color(0.05, 0.04, 0.03, 0.35), 2.4, true)
+	draw_arc(Vector2.ZERO, 44.0, 0, TAU, 48, Color(c.lightened(0.3), 0.4), 1.0, true)
+	if absf(ob["v"]) > 0.01:
+		var pc: Color = Color("#ff7a5c") if ob["v"] > 0.0 else Color("#7fc0ff")
+		draw_arc(Vector2.ZERO, 44.0, -PI / 2, -PI / 2 + TAU * absf(ob["v"]), 42, Color(pc, 0.95), 3.0, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# the pole's shadow, falling away from the sun
+	var sv: Vector2 = battle.shadow_vec.normalized() * 30.0
+	draw_line(p, p + Vector2(sv.x, sv.y * 0.5), Color(0.05, 0.05, 0.1, 0.28), 2.4, true)
+	# the pole: dark wood with a lit edge, a gold finial and a crossbar
+	var top := p + Vector2(0, -52)
+	draw_line(p + Vector2(0.6, 0), top, Color("#2a1a10"), 2.6, true)
+	draw_line(p + Vector2(-0.4, 0), top, Color("#7a5434"), 1.0, true)
+	draw_line(top + Vector2(-1.5, 3), top + Vector2(22, 3), Color("#2a1a10"), 1.6, true)
+	draw_circle(top + Vector2(0, -2), 2.2, Color("#3a2410"))
+	draw_circle(top + Vector2(-0.4, -2.4), 1.5, Color("#f0c860"))
+	# the cloth: a strip of quads that ripples away from the pole, darker in the folds
+	var n := 7
+	var length := 34.0
+	var upper := PackedVector2Array()
+	var lower := PackedVector2Array()
+	for i in n + 1:
+		var k := float(i) / n
+		var ph := tm * 4.2 - k * 3.6 + p.x * 0.05
+		var lift := sin(ph) * 2.6 * k
+		var x := k * length
+		var hgt := lerpf(17.0, 14.0, k)
+		upper.append(top + Vector2(x, 3.0 + lift))
+		lower.append(top + Vector2(x, 3.0 + hgt + lift + sin(ph * 0.7) * 1.2 * k))
+	for i in n:
+		var k := (float(i) + 0.5) / n
+		var shade := 0.82 + 0.18 * cos(tm * 4.2 - k * 3.6 + p.x * 0.05 - 0.6)
+		var cc := Color(c.r * shade, c.g * shade, c.b * shade)
+		if i == n - 1:
+			# swallowtail: a notch cut into the fly end
+			var mid := (upper[n] + lower[n]) * 0.5 - Vector2(length / n * 0.7, 0)
+			draw_colored_polygon(PackedVector2Array([upper[i], upper[n], mid]), cc)
+			draw_colored_polygon(PackedVector2Array([upper[i], mid, lower[i]]), cc)
+			draw_colored_polygon(PackedVector2Array([lower[i], mid, lower[n]]), cc)
+		else:
+			draw_colored_polygon(PackedVector2Array([upper[i], upper[i + 1], lower[i + 1], lower[i]]), cc)
+	# a pale hem along the top and the house device
+	draw_polyline(upper, Color(c.lightened(0.45), 0.9), 1.0, true)
+	var dc := (upper[2] + lower[2]) * 0.5
+	draw_circle(dc, 4.0, Color("#e8c060"))
+	draw_circle(dc, 2.6, c.darkened(0.25))
+	var out := PackedVector2Array(upper)
+	var tail := (upper[n] + lower[n]) * 0.5 - Vector2(length / n * 0.7, 0)
+	out.append(tail)
+	for i in range(n, -1, -1):
+		out.append(lower[i])
+	draw_polyline(out, Color(0.06, 0.04, 0.05, 0.75), 0.8, true)
+
 func _draw_impl() -> void:
 	if not initialized:
 		return
 	for ob in objectives:
-		var p: Vector2 = ob["p"]
-		var c = Color("#a64639") if ob["owner"] == 0 else Color("#39646a") if ob["owner"] == 1 else GOLD
-		draw_arc(p, 42, 0, TAU, 48, Color(c, 0.22), 1.0, true)
-		draw_line(p, p + Vector2(0, -38), INK, 2.0, true)
-		var wave = sin(Time.get_ticks_msec() * 0.002 + p.x) * 2.0
-		draw_colored_polygon(PackedVector2Array([p + Vector2(0, -38), p + Vector2(23, -35 + wave), p + Vector2(19, -22 + wave), p + Vector2(0, -25)]), c)
-		if absf(ob["v"]) > 0.01:
-			draw_arc(p, 45, -PI / 2, -PI / 2 + TAU * absf(ob["v"]), 42, c, 2.0, true)
+		if battle.in_view(ob["p"]):
+			_draw_standard(ob)
 	if battle.player == null or battle.ended or battle.duel:
 		return
 	if Game.command_view:

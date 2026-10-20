@@ -28,30 +28,77 @@ func setup(sz: Vector2) -> void:
 	spr.texture = vp.get_texture()
 	spr.centered = false
 	spr.scale = Vector2(1.0 / RES, 1.0 / RES)
+	spr.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	add_child(spr)
 
+var pending: Array = []       # sprites to bake into the ground (corpses), added for one render
+var baked: Array = []         # sprites rendered last frame, freed now
+
 func _process(_delta: float) -> void:
+	for s in baked:
+		if is_instance_valid(s):
+			s.queue_free()
+	baked.clear()
+	if pending.size() > 0:
+		for s in pending:
+			painter.add_child(s)
+		baked = pending
+		pending = []
+		vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	if ops.size() > 0:
 		painter.queue_redraw()
 		vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+## Bakes a copy of a (unit) sprite into the ground layer, keeping its material (team colours).
+func stamp_sprite(src: Sprite2D, foot: Vector2) -> void:
+	var s := Sprite2D.new()
+	s.texture = src.texture
+	s.region_enabled = src.region_enabled
+	s.region_rect = src.region_rect
+	s.centered = false
+	s.offset = src.offset
+	s.flip_h = src.flip_h
+	s.material = src.material
+	s.modulate = Color(0.86, 0.84, 0.9)
+	var g := src.get_global_transform()
+	s.transform = Transform2D(g.get_rotation(), g.get_scale(), 0.0, g.origin)
+	pending.append(s)
 
 func _paint() -> void:
 	for op in ops:
 		match op[0]:
 			"fp":
-				painter.draw_set_transform(op[1] + Vector2(1.0, 0.5), 0.0, Vector2(1.0, 0.5))
-				painter.draw_circle(Vector2.ZERO, 1.0, Color(0.3, 0.32, 0.62, 0.28))
+				# a soft, shallow print: barely darker than the ground, so trampled snow reads
+				# as churned rather than speckled
+				painter.draw_set_transform(op[1] + Vector2(1.0, 0.5), 0.0, Vector2(1.0, 0.55))
+				painter.draw_circle(Vector2.ZERO, 1.4, Color(0.36, 0.42, 0.62, 0.12), true, -1.0, true)
 				painter.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			"blood":
 				var p: Vector2 = op[1]
 				var r: float = op[2]
-				painter.draw_set_transform(p, 0.0, Vector2(1.0, 0.6))
-				painter.draw_circle(Vector2.ZERO, r, Color(0.42, 0.04, 0.09, 0.72))
-				painter.draw_circle(Vector2(r * 0.6, r * 0.3), r * 0.55, Color(0.36, 0.03, 0.08, 0.6))
-				painter.draw_circle(Vector2(-r * 0.7, -r * 0.2), r * 0.4, Color(0.5, 0.06, 0.1, 0.6))
+				# one irregular pool (a single polygon, so lobes never stack darker), a wet sheen,
+				# and a few drops flung around it
+				var rng := RandomNumberGenerator.new()
+				rng.seed = int(p.x * 13.0 + p.y * 7.0)
+				var ph := rng.randf() * TAU
+				var lobes := float(rng.randi_range(2, 4))
+				var pts := PackedVector2Array()
+				for i in 18:
+					var a := TAU * i / 18.0
+					var rr := r * (0.78 + 0.2 * sin(a * lobes + ph) + rng.randf_range(-0.08, 0.08))
+					pts.append(p + Vector2(cos(a) * rr, sin(a) * rr * 0.55))
+				painter.draw_colored_polygon(pts, Color(0.28, 0.02, 0.05, 0.62))
+				painter.draw_set_transform(p + Vector2(-r * 0.2, -r * 0.12), 0.0, Vector2(1.0, 0.5))
+				painter.draw_circle(Vector2.ZERO, r * 0.42, Color(0.16, 0.0, 0.03, 0.35), true, -1.0, true)
+				painter.draw_circle(Vector2(-r * 0.2, -r * 0.25), r * 0.16, Color(0.75, 0.3, 0.32, 0.22), true, -1.0, true)
+				for k in 5:
+					var d := Vector2.from_angle(rng.randf() * TAU) * r * rng.randf_range(1.05, 1.7)
+					painter.draw_circle(d, rng.randf_range(0.5, 1.3), Color(0.28, 0.02, 0.05, 0.55), true, -1.0, true)
 				painter.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			"drop":
-				painter.draw_circle(op[1] + Vector2(0.5, 0.5), 0.6, Color(0.55, 0.05, 0.1, 0.85))
+				painter.draw_set_transform(op[1] + Vector2(0.5, 0.5), 0.0, Vector2(1.0, 0.6))
+				painter.draw_circle(Vector2.ZERO, 0.9, Color(0.36, 0.03, 0.06, 0.55))
+				painter.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			"tex":
 				var t: Texture2D = op[1]
 				var p: Vector2 = op[2]
@@ -89,10 +136,13 @@ func _paint() -> void:
 			"scorch":
 				var p: Vector2 = op[1]
 				var r: float = op[2]
-				for k in 5:
-					var rr := r * (1.0 - k * 0.16)
-					painter.draw_set_transform(p, 0.0, Vector2(1.0, 0.55))
-					painter.draw_circle(Vector2(randf_range(-2, 2), randf_range(-2, 2)), rr, Color(0.16, 0.12, 0.16, 0.16 + k * 0.06))
+				# soft overlapping smudges of soot, darkest at the heart
+				var bt: Texture2D = Art.tex["blob"]
+				for k in 9:
+					var rr := r * randf_range(0.5, 1.1) * (1.0 - k * 0.05)
+					var c := p + Vector2(randf_range(-r, r) * 0.45, randf_range(-r, r) * 0.22)
+					painter.draw_set_transform(c, randf_range(-0.4, 0.4), Vector2(1.0, 0.55))
+					painter.draw_texture_rect(bt, Rect2(-rr, -rr, rr * 2.0, rr * 2.0), false, Color(0.1, 0.07, 0.05, 0.1 + k * 0.025))
 				painter.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	ops.clear()
 
@@ -104,7 +154,8 @@ func blood_pool(p: Vector2, r: float) -> void:
 	ops.append(["blood", p, r])
 
 func blood_drop(p: Vector2) -> void:
-	ops.append(["drop", p.floor()])
+	if randf() < 0.35:
+		ops.append(["drop", p.floor()])
 
 func stamp(t: Texture2D, p: Vector2, flip: bool, mod: Color = Color(0.68, 0.66, 0.78, 1.0)) -> void:
 	ops.append(["tex", t, p.floor(), flip, mod])
