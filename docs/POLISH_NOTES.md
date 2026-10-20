@@ -38,7 +38,7 @@ These are findings from the repository, not claims that its original designers m
 ## Art and map changes
 
 - Warm russet/ivory allies and cool teal/steel enemies, a warmer controlled-body palette, steel split toning and a selective rim.
-- A live gold-edged mantle and horsehair crest anchored to the actual rendered body frame, with movement drag. Existing animated KayKit bodies and weapon sheets remain the base art.
+- A live gold-edged mantle anchored to the actual rendered body frame, with movement drag. Existing animated KayKit bodies and weapon sheets remain the base art.
 - Foot marker and directional chevron; nearby hostile ground sectors show sweep/thrust shapes, timing and committed facing. Unblockables also use a cross, not just a colour change.
 - Wider weapon ribbons, gold finishers and mint counters; reduced background soldier hit flashes.
 - An anchored HUD with actual health, stamina, two recharge meters, finisher milestones and skill/guard/kick/flask tiles. Bundled Lucide SVG icons have their upstream license notices.

@@ -113,7 +113,7 @@ func _respawn() -> void:
 	Game.event_log("yard respawn / controlled body restored")
 func _draw_yard_ui() -> void:
 	Game.text(yard_ui,Vector2(18,21),"COMBAT YARD",6,Color("#e6c48b"))
-	Game.text(yard_ui,Vector2(622,21),"1 SWORD / 2 GLAIVE / 3 SPEAR / 4 HAMMER / 5 DAGGERS / 6 BOW",4,Color("#f2e8d3"),2)
+	Game.text(yard_ui,Vector2(622,293),"1 SWORD / 2 GLAIVE / 3 SPEAR / 4 HAMMER / 5 DAGGERS / 6 BOW",4,Color("#f2e8d3"),2)
 
 class YardLayout extends RefCounted:
 	var phase := 1
@@ -151,4 +151,4 @@ class YardLayout extends RefCounted:
 	func try_fall(_u,_p: Vector2) -> bool: return false
 	func elevation(_p: Vector2) -> int: return 0
 	func markers() -> Array: return []
-	func objective() -> String: return "KEEP THE INITIATIVE / PERFECT DODGES PRIME A COUNTER"
+	func objective() -> String: return "PARRY / DODGE / COUNTER"

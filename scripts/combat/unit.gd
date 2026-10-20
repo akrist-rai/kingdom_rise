@@ -397,9 +397,6 @@ func become_player() -> void:
 		mantle.unit = self
 		add_child(mantle)
 		move_child(mantle, 0)
-		var crest := HeroMantle.Crest.new()
-		crest.unit = self
-		add_child(crest)
 	_apply_palette()
 	if mounted:
 		horse_max = 140.0
