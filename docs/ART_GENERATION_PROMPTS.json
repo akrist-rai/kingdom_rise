@@ -1,0 +1,54 @@
+{
+  "generator": "Built-in imagegen",
+  "use": "Eight original game paintings assembled as native Godot sprites. Source alpha is preserved.",
+  "assets": [
+    {
+      "key": "terrain",
+      "transparent": false,
+      "prompt": "A production game asset for a beautiful hand-painted 2D medieval strategy game. Bird's-eye orthographic view from high above looking north, ground plane visible, buildings show their south facades and roofs. Fine confident dark teal ink contours, warm gouache and watercolor washes, nuanced brush texture, nuanced illustrated book art, restrained golden ochre, warm pale plaster, sage, terracotta and petrol blue. Late medieval western European architecture, believable irregular forms, NOT 3D render, NOT low-poly, NOT geometric programmer art, no text, no grid, no UI, no labels, no soldiers, no cropped subject. All asset lighting from upper left. Create a wide 2048x1536 LANDSCAPE GROUND PLATE. No buildings at all. A traversable town terrain foundation and pastoral surroundings, winding irregular pale limestone cobblestone streets with three generous intersections and small empty civic spaces, gardens and fallow earth between streets. The broad main route curves from the west lower-middle toward central square and then north-east. Secondary route from south center to north center. River along far right edge only, outside playable town. At most sparse bushes at far borders. Muted landscape colors, subtle ground detail. NO WALLS OR BUILDINGS; separate transparent assets will be placed on this ground. No huge contrasting rectangular field patches. Ground fills every edge, no sky, no horizon, no map symbols.",
+      "saved_path": "assets/chapter3/terrain.png"
+    },
+    {
+      "key": "townhouses",
+      "transparent": true,
+      "prompt": "A production game asset for a beautiful hand-painted 2D medieval strategy game. Bird's-eye orthographic view from high above looking north, ground plane visible, buildings show their south facades and roofs. Fine confident dark teal ink contours, warm gouache and watercolor washes, nuanced brush texture, nuanced illustrated book art, restrained golden ochre, warm pale plaster, sage, terracotta and petrol blue. Late medieval western European architecture, believable irregular forms, NOT 3D render, NOT low-poly, NOT geometric programmer art, no text, no grid, no UI, no labels, no soldiers, no cropped subject. All asset lighting from upper left. Create ONE transparent cutout of an irregular cluster of THREE adjacent small European timber-framed town houses with varied gabled terracotta roofs, cream plaster, dark oak beams, tiny dormers, ivy and brick chimneys. The three houses form a shallow crooked row facing south, continuous footprint, 3:2 wide composition. Full buildings with roofs and front doors visible, keep the footprint compact and silhouettes varied. A few vines and barrels against the walls only; no terrain patch under them, alpha background, soft narrow contact shadow only. Not a multi-cell sprite sheet.",
+      "saved_path": "assets/chapter3/townhouses.png"
+    },
+    {
+      "key": "market",
+      "transparent": true,
+      "prompt": "A production game asset for a beautiful hand-painted 2D medieval strategy game. Bird's-eye orthographic view from high above looking north, ground plane visible, buildings show their south facades and roofs. Fine confident dark teal ink contours, warm gouache and watercolor washes, nuanced brush texture, nuanced illustrated book art, restrained golden ochre, warm pale plaster, sage, terracotta and petrol blue. Late medieval western European architecture, believable irregular forms, NOT 3D render, NOT low-poly, NOT geometric programmer art, no text, no grid, no UI, no labels, no soldiers, no cropped subject. All asset lighting from upper left. Create ONE transparent cutout of a small medieval market building cluster: two connected merchants' half-timber houses and three market stalls with cream and faded rust canvas awnings, wooden tables, baskets and tiny produce details in front. Compact crooked 3:2 footprint facing south, roofs richly painted but readable at game scale. Entire cluster visible with a transparent background and narrow soft contact shadows. No floor, road, paper background or terrain island. No people, no text, no sprite sheet.",
+      "saved_path": "assets/chapter3/market.png"
+    },
+    {
+      "key": "chapel",
+      "transparent": true,
+      "prompt": "A production game asset for a beautiful hand-painted 2D medieval strategy game. Bird's-eye orthographic view from high above looking north, ground plane visible, buildings show their south facades and roofs. Fine confident dark teal ink contours, warm gouache and watercolor washes, nuanced brush texture, nuanced illustrated book art, restrained golden ochre, warm pale plaster, sage, terracotta and petrol blue. Late medieval western European architecture, believable irregular forms, NOT 3D render, NOT low-poly, NOT geometric programmer art, no text, no grid, no UI, no labels, no soldiers, no cropped subject. All asset lighting from upper left. Create ONE transparent cutout of a modest French/Burgundian medieval stone parish church: warm limestone, steep weathered blue-slate roof, short square bell tower and slender modest spire, a small apse, gothic windows and wooden south entrance. It is a town church, NOT a cathedral or fortress. 3:2 wide asset with the entire structure visible. Hand-illustrated gouache with elegant ink line, small ivy tufts at base. No terrain island, no background, no sky, no text, narrow soft contact shadow.",
+      "saved_path": "assets/chapter3/chapel.png"
+    },
+    {
+      "key": "guildhall",
+      "transparent": true,
+      "prompt": "A production game asset for a beautiful hand-painted 2D medieval strategy game. Bird's-eye orthographic view from high above looking north, ground plane visible, buildings show their south facades and roofs. Fine confident dark teal ink contours, warm gouache and watercolor washes, nuanced brush texture, nuanced illustrated book art, restrained golden ochre, warm pale plaster, sage, terracotta and petrol blue. Late medieval western European architecture, believable irregular forms, NOT 3D render, NOT low-poly, NOT geometric programmer art, no text, no grid, no UI, no labels, no soldiers, no cropped subject. All asset lighting from upper left. Create ONE transparent cutout of a medieval European civic guildhall: an elegant but modest two-storey timber-framed hall with a wide slate gabled roof, cream plaster and warm oak beams, side stair, central wooden door and a small belfry, two ochre hanging fabric banners without emblems or letters. Full building visible, 3:2 wide composition. Refined illustrated strategy-game asset, beautiful varied hand-painted detail. No floor or terrain patch, alpha transparent background with narrow soft contact shadow only.",
+      "saved_path": "assets/chapter3/guildhall.png"
+    },
+    {
+      "key": "wall",
+      "transparent": true,
+      "prompt": "Production cutout asset for the same hand-painted 2D medieval European strategy town: fine dark teal ink line, detailed gouache and watercolor, warm honey limestone, weathered terracotta and petrol slate, sage ivy. Orthographic high bird's eye view looking north with south-facing walls visible, no horizon, no sky, NO TEXT, no UI, no soldiers, full object visible. Real transparent alpha background, preserve transparency outside object. ONE modest LOW TOWN WALL segment, long horizontally: an old uneven limestone wall with tiny worn crenellations and ivy, roughly 12 metres long and only 2.5 metres high. It is a humble town boundary, not a fortress rampart. Show the top and south face. A slender buttress at each end, NO TOWERS, NO GATE, no terrain island, no buildings. Horizontal 3:1 silhouette centered with generous transparent space. Narrow contact shadow only.",
+      "saved_path": "assets/chapter3/wall.png"
+    },
+    {
+      "key": "cottage",
+      "transparent": true,
+      "prompt": "Production cutout asset for the same hand-painted 2D medieval European strategy town: fine dark teal ink line, detailed gouache and watercolor, warm honey limestone, weathered terracotta and petrol slate, sage ivy. Orthographic high bird's eye view looking north with south-facing walls visible, no horizon, no sky, NO TEXT, no UI, no soldiers, full object visible. Real transparent alpha background, preserve transparency outside object. ONE compact cluster of TWO smaller medieval artisan cottages with irregular adjoining brown oak framing, cream plaster, one faded blue-slate roof and one weathered terracotta roof, front wooden doors, shutters, a little chimney, stacked firewood and ivy against the side. More humble and lower than a guildhall. 3:2 composition, compact connected building footprint, no road, no terrain island, no floor plane, transparent outside the cottages, narrow contact shadow.",
+      "saved_path": "assets/chapter3/cottage.png"
+    },
+    {
+      "key": "orchard",
+      "transparent": true,
+      "prompt": "Production cutout asset for the same hand-painted 2D medieval European strategy town: fine dark teal ink line, detailed gouache and watercolor, warm honey limestone, weathered terracotta and petrol slate, sage ivy. Orthographic high bird's eye view looking north with south-facing walls visible, no horizon, no sky, NO TEXT, no UI, no soldiers, full object visible. Real transparent alpha background, preserve transparency outside object. ONE loose small stand of THREE deciduous orchard trees, varied knobbly trunks, airy overlapping oak/fruit-tree crowns with warm sage, olive and pale gold leaves, a few tiny red apples. High overhead 3/4 perspective matching painted medieval strategy buildings. Elegant illustrated foliage clusters, visible trunk feet, natural silhouette. No grass patch, no ground island, no landscape behind, fully transparent background with narrow soft shadows.",
+      "saved_path": "assets/chapter3/orchard.png"
+    }
+  ]
+}
